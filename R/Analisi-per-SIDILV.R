@@ -113,7 +113,7 @@ tab_pc <- dt_an %>%
   summarise(N_individui = n(), POS = sum(Pos_Pancov == "Pos"), NEG= sum(Pos_Pancov == "Neg")) %>% 
   arrange(desc(N_individui))
    
-tab_pc %>% filter(NEG > 1) %>%  select(-2) %>% pivot_longer(!specie, names_to = "Pancov", values_to = "totali") %>%
+tab_pc %>% filter(NEG > 1) %>% select(-2) %>% pivot_longer(!specie, names_to = "Pancov", values_to = "totali") %>%
   ggplot()+
   aes(x=fct_reorder(specie, totali, .desc = T), y=totali, fill=Pancov)+
   geom_col(position = "stack")+
@@ -178,7 +178,10 @@ library(flextable)
 ft_sieri <- tab_sieri %>% 
   group_by(Specie) %>% 
   summarise(Totali = n(), ELISA = sum(ELISA == "Pos"), sELISA= sum(sELISA == "Pos")) %>% 
-  arrange(desc(ELISA)) %>% flextable() %>% autofit()
+  arrange(desc(ELISA))
+  #flextable() %>% autofit()
+
+sum(ft_sieri$Totali)
 
 ft_sieri %>% 
 save_as_image(., here("Prova export.png"), expand=15, res = 200) #non capisco perché metta trasparenza, ma con paint poi si vede bene...
