@@ -88,7 +88,9 @@ dt_an <- dt_an %>%
   mutate(materiale = replace(materiale, materiale %in% "T. NAS", "T.NAS"),
          materiale = replace(materiale, materiale %in% "T. RETT", "T.RETT"),
          materiale = replace(materiale, materiale %in% c("ILEO/DIGIUNO", "DIGIUNO","DUODENO"), "INTESTINO"),
-         materiale = replace(materiale, materiale %in% "SENI NASALI", "T.NAS"))
+         materiale = replace(materiale, materiale %in% "SENI NASALI", "T.NAS"),
+         specie = replace(specie, specie %in% "DELFINO", "TURSIOPE"),
+         specie = replace(specie, specie %in% "CANGURO", "WALLABY"))
 
 unique(dt_an$specie)
 
@@ -113,17 +115,17 @@ tab_pc <- dt_an %>%
   summarise(N_individui = n(), POS = sum(Pos_Pancov == "Pos"), NEG= sum(Pos_Pancov == "Neg")) %>% 
   arrange(desc(N_individui))
    
-tab_pc %>% filter(NEG > 1) %>% select(-2) %>% pivot_longer(!specie, names_to = "Pancov", values_to = "totali") %>%
+fig1 <- tab_pc %>% filter(NEG > 1) %>% select(-2) %>% pivot_longer(!specie, names_to = "PanCoV", values_to = "totali") %>%
   ggplot()+
-  aes(x=fct_reorder(specie, totali, .desc = T), y=totali, fill=Pancov)+
+  aes(x=fct_reorder(specie, totali, .desc = T), y=totali, fill=PanCoV)+
   geom_col(position = "stack")+
   geom_text(aes(specie, label = ifelse(totali>0, totali,"")), position = position_stack(vjust = 1), size=5, hjust = 0.5, vjust = -0.5)+#, position = position_dodge(width = 1))+
-  labs(x="Specie", y="Totali", title = "Risultati Pancov", subtitle = "escluse le specie di cui presente un solo individuo negativo")+
+  labs(x="Specie", y="Totali")+
   theme_minimal()+
-  theme(title = element_text(size = 14),
-        axis.text = element_text(size=10 ,face = "bold"),
-        legend.text = element_text(size=10 ,face = "bold"),
-        axis.text.x.bottom = element_text(vjust= 10))
+  theme(axis.text = element_text(size=12 ,face = "bold"),
+        legend.text = element_text(size=12 ,face = "bold"),
+        axis.text.x.bottom = element_text(vjust= 12),
+        legend.title = element_text(size=12, face = "bold"))
 #coord_flip()
   
 #non riesco ad aggiungere etichette... provare a vedere lezioni
@@ -160,7 +162,9 @@ tab_sieri <- sieri %>% mutate(ELISA = replace(ELISA, ELISA %in% c("INSUFF", "ASS
   mutate(ELISA = ifelse(ELISA=="POS", 1, 0),
          sELISA = ifelse(sELISA=="POS", 1, 0), 
          Materiale = ifelse(Materiale %in% c("UMOR VITREO", "UMOR"), "UMOR ACQUEO", Materiale)) %>% 
-  mutate(Materiale = ifelse(Materiale %in% c("UMOR ACQUEO", "MUSCOLO"), Materiale, "SIERO")) %>% 
+  mutate(Materiale = ifelse(Materiale %in% c("UMOR ACQUEO", "MUSCOLO"), Materiale, "SIERO"),
+         Specie = replace(Specie, Specie %in% "DELFINO", "TURSIOPE"),
+         Specie = replace(Specie, Specie %in% "CANGURO", "WALLABY")) %>% 
 distinct(`Conf. orig`, .keep_all = T) %>%
 pivot_wider(names_from = Materiale, values_from = ELISA, values_fill = 0) %>%
 select(-NOTE, -`% POS`) %>%
@@ -174,17 +178,21 @@ select(-SIERO, -`UMOR ACQUEO`) %>%
 relocate(ELISA, .before = sELISA) 
   
 library(flextable)
+set_flextable_defaults(background.color = "white") #serve per evitare trasparenza!
+
 
 ft_sieri <- tab_sieri %>% 
   group_by(Specie) %>% 
   summarise(Totali = n(), ELISA = sum(ELISA == "Pos"), sELISA= sum(sELISA == "Pos")) %>% 
-  arrange(desc(ELISA))
-  #flextable() %>% autofit()
+  arrange(desc(ELISA)) %>% janitor::adorn_totals("row", name = "TOTALE") %>% #adorn_totals aggiunge riga o colonna con i totali!
+  flextable() %>% autofit() %>% hline(., i = 22, part = "body") #ultimo comando aggiunge linea prima di ultima riga (dopo la 22)
+
+
 
 sum(ft_sieri$Totali)
 
 ft_sieri %>% 
-save_as_image(., here("Prova export.png"), expand=15, res = 200) #non capisco perché metta trasparenza, ma con paint poi si vede bene...
+save_as_image(., here("exports", "Prova export.jpg"), expand=15, res = 200) #se non si setta background bianco prima sarà trasparente di default!
 
 
 sum(ft_sieri$ELISA)
