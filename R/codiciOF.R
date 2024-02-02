@@ -24,6 +24,14 @@ ggt <- ggtree(tree, cex = 0.8)+
   geom_tiplab(align=F, size=3.5)+
   geom_treescale(y = - 1, x= -20, aes(color=branch),fontsize = 7,options(ignore.negative.edge=TRUE))
 ggt
+groupClade(ggt, 180)
+
+tree2 <- tidytree::as_tibble(tree) %>% groupClade(180) %>% tidytree::as.phylo()
+
+ggt2 <- ggtree(tree2, cex = 0.8)+
+  geom_tiplab(align=F, size=3.5)+
+  geom_treescale(y = - 1, x= -20, aes(color=branch),fontsize = 7,options(ignore.negative.edge=TRUE))
+
 nodeid(ggt, )
 
 
