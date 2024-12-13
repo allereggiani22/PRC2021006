@@ -1,41 +1,30 @@
 source(here('R', 'librerie.R'))
+library(zoo)
 
-seqs <- readDNAStringSet(here("dati","Allineamento per poster.fas"))
+dt2023 <- read_excel("dati/25032024 Elenco Campioni PRC 2021_006.xlsx", 
+                     sheet = "CAMPIONI PRC COVID 2023", col_types = c("skip", 
+                                                                "skip", "text", "skip", "text", 
+                                                                "text", "text", "text", "skip", "skip", 
+                                                                "skip", "skip", "skip", "skip", "skip"))
 
-aln <- msa(seqs, method = "ClustalW")
+dt2024 <- read_excel("dati/25032024 Elenco Campioni PRC 2021_006.xlsx", 
+                     sheet = "CAMPIONI PRC COVID 2024", col_types = c("skip", 
+                                                                      "skip", "text", "skip", "text", 
+                                                                      "text", "text", "text", "skip", "skip", 
+                                                                      "skip", "skip", "skip", "skip", "skip"))
+dati <- bind_rows(dt2023, dt2024)
 
-cv <- msaConvert(aln, type = c("bios2mds::align"))
+dati <- clean_names(dati)
 
-library(bios2mds)
-export.fasta(cv, outfile = "outfile.fas", ncol(aln), open = "w")
+dati <- dati %>% 
+  mutate(across(c("conf_orig","specie","provenienza","sacco"), na.locf))
 
+export <- dati %>% 
+  mutate(materiale = replace(materiale, materiale %in% "SIEROLOGIA", "SIERO"),
+         materiale = replace(materiale, materiale %in% "CUORE", "SIERO"),
+         materiale = replace(materiale, materiale %in% "COAGULO CARDIACO", "SIERO"),
+         sacco = as.numeric(sacco)) %>% 
+  filter(materiale %in% c("SIERO","UMOR","MUSCOLO")) %>%
+  filter(sacco > 125)
 
-
-bin <- as.DNAbin(aln)
-
-an <- as.alignment(bin)
-nm <- as.matrix(an)
-nbinmat <- as.matrix(labels(bin))
-class(bin)
-dnbin <- dist.dna(bin, model = "TN93")
-tree <- nj(dnbin)
-tree2 <- (dnbin)
-ggt <- ggtree(tree, cex = 0.8)+
-  geom_tiplab(align=F, size=3.5)+
-  geom_treescale(y = - 1, x= -20, aes(color=branch),fontsize = 7,options(ignore.negative.edge=TRUE))
-ggt
-groupClade(ggt, 180)
-
-tree2 <- tidytree::as_tibble(tree) %>% groupClade(180) %>% tidytree::as.phylo()
-
-ggt2 <- ggtree(tree2, cex = 0.8)+
-  geom_tiplab(align=F, size=3.5)+
-  geom_treescale(y = - 1, x= -20, aes(color=branch),fontsize = 7,options(ignore.negative.edge=TRUE))
-
-nodeid(ggt, )
-
-
-njmsaplot<-msaplot(ggt, bin, offset = 0.009, width=1, height = 0.5, color = c(rep("rosybrown", 1), rep("sienna1", 1), rep("lightgoldenrod1", 1), rep("lightskyblue1", 1), rep("green",1), rep("pink",1), rep("darkred",1)))
-njmsaplot
-
-
+export %>% write.xlsx(.,"exports/Elenco sieri dal sacco 126.xlsx")
