@@ -81,21 +81,7 @@ dati <-
 # dicembre 2024: non mi interessa più perché è analisi complessiva, non parziale
 
 
-
-# Tabella frequenza per provincia -----------------------------------------
-
-
-prov <- table(dati$provenienza) #numero di campioni per sede
-
-round(prov/length(dati$provenienza)*100, 0) #percentuale per sede
-
-prov2 <- as.data.frame(prov)
-prov2 %>% add_column(percent = round(prov/length(dati$provenienza)*100, 0)) %>% 
-  dplyr::rename(Provincia = Var1, Totale = Freq, Percentuale= percent) %>% arrange(desc(Totale)) %>% view()
-  
-
-
-# Analisi --------------------------------------------
+# Preparazione dati per analisi --------------------------------------------
 str(dati)
 
 dt_an <-   dati %>%
@@ -104,7 +90,7 @@ dt_an <-   dati %>%
   filter(!is.na(specie)) %>% 
   filter(specie != "CINGHIALE") %>% 
   filter(materiale != "MILZA") 
-  
+
 
 unique(dt_an$materiale)
 
@@ -116,40 +102,200 @@ dt_an <- dt_an %>%
          materiale = replace(materiale, materiale %in% "SENI NASALI", "T.NAS"),
          materiale = replace(materiale, materiale %in% "T. FAR", "FARINGE"),
          materiale = replace(materiale, materiale %in% "TR + PO", "TRACHEA + POLMONE"))#,
-         # specie = replace(specie, specie %in% "CAPRIOLO", "ROE DEER"),
-         # specie = replace(specie, specie %in% "DAINO", "FALLOW DEER"),
-         # specie = replace(specie, specie %in% "TASSO", "BADGER"),
-         # specie = replace(specie, specie %in% "ISTRICE", "PORCUPINE"),
-         # specie = replace(specie, specie %in% "LEPRE", "HARE"),
-         # specie = replace(specie, specie %in% "RICCIO", "HEDGEHOG"),
-         # specie = replace(specie, specie %in% "SCOIATTOLO", "SQUIRREL"),
-         # specie = replace(specie, specie %in% "LUPO", "WOLF"),
-         # specie = replace(specie, specie %in% "CERVO", "DEER"),
-         # specie = replace(specie, specie %in% "FAINA", "BEECH MARTEN"),
-         # specie = replace(specie, specie %in% "DELFINO", "TURSIOPS"),
-         # specie = replace(specie, specie %in% "VOLPE", "RED FOX"),
-         # specie = replace(specie, specie %in% "SILVILAGO", "MARSH RABBIT"),
-         # specie = replace(specie, specie %in% "PUZZOLA", "SKUNK"),
-         # specie = replace(specie, specie %in% "CANGURO", "WALLABY"),
-         # specie = replace(specie, specie %in% "PUZZOLA", "SKUNK"),
-         # specie = replace(specie, specie %in% "CONIGLIO", "RABBIT"),
-         # specie = replace(specie, specie %in% "LONTRA", "OTTER"),
-         # specie = replace(specie, specie %in% "SURICATO", "MEERKAT"),
-         # specie = replace(specie, specie %in% "AGUTI DI AZARA", "AZARA'S AGOUTI"),
-         # specie = replace(specie, specie %in% "RATTO", "RAT"),
-         # specie = replace(specie, specie %in% "TOPO", "MOUSE"),
-         # specie = replace(specie, specie %in% "GHIRO", "DORMOUSE"),
-         # specie = replace(specie, specie %in% "PROCIONE", "RACCOON"),
-         # specie = replace(specie, specie %in% "MARTORA", "PINE MARTEN"),
-         # specie = replace(specie, specie %in% "FURETTO", "FERRET"),
-         # specie = replace(specie, specie %in% "DONNOLA", "WEASEL"),
-         # specie = replace(specie, specie %in% "TALPA", "MOLE"),
-         # specie = replace(specie, specie %in% "SCIACALLO", "JACKAL"),
-         # specie = replace(specie, specie %in% "CINCILLA'", "CHINCHILLA"),
-         # specie = replace(specie, specie %in% "PIPISTRELLO", "BAT"),
-         # specie = replace(specie, specie %in% "TURSIOPE", "TURSIOPS"))
+# specie = replace(specie, specie %in% "CAPRIOLO", "ROE DEER"),
+# specie = replace(specie, specie %in% "DAINO", "FALLOW DEER"),
+# specie = replace(specie, specie %in% "TASSO", "BADGER"),
+# specie = replace(specie, specie %in% "ISTRICE", "PORCUPINE"),
+# specie = replace(specie, specie %in% "LEPRE", "HARE"),
+# specie = replace(specie, specie %in% "RICCIO", "HEDGEHOG"),
+# specie = replace(specie, specie %in% "SCOIATTOLO", "SQUIRREL"),
+# specie = replace(specie, specie %in% "LUPO", "WOLF"),
+# specie = replace(specie, specie %in% "CERVO", "DEER"),
+# specie = replace(specie, specie %in% "FAINA", "BEECH MARTEN"),
+# specie = replace(specie, specie %in% "DELFINO", "TURSIOPS"),
+# specie = replace(specie, specie %in% "VOLPE", "RED FOX"),
+# specie = replace(specie, specie %in% "SILVILAGO", "MARSH RABBIT"),
+# specie = replace(specie, specie %in% "PUZZOLA", "SKUNK"),
+# specie = replace(specie, specie %in% "CANGURO", "WALLABY"),
+# specie = replace(specie, specie %in% "PUZZOLA", "SKUNK"),
+# specie = replace(specie, specie %in% "CONIGLIO", "RABBIT"),
+# specie = replace(specie, specie %in% "LONTRA", "OTTER"),
+# specie = replace(specie, specie %in% "SURICATO", "MEERKAT"),
+# specie = replace(specie, specie %in% "AGUTI DI AZARA", "AZARA'S AGOUTI"),
+# specie = replace(specie, specie %in% "RATTO", "RAT"),
+# specie = replace(specie, specie %in% "TOPO", "MOUSE"),
+# specie = replace(specie, specie %in% "GHIRO", "DORMOUSE"),
+# specie = replace(specie, specie %in% "PROCIONE", "RACCOON"),
+# specie = replace(specie, specie %in% "MARTORA", "PINE MARTEN"),
+# specie = replace(specie, specie %in% "FURETTO", "FERRET"),
+# specie = replace(specie, specie %in% "DONNOLA", "WEASEL"),
+# specie = replace(specie, specie %in% "TALPA", "MOLE"),
+# specie = replace(specie, specie %in% "SCIACALLO", "JACKAL"),
+# specie = replace(specie, specie %in% "CINCILLA'", "CHINCHILLA"),
+# specie = replace(specie, specie %in% "PIPISTRELLO", "BAT"),
+# specie = replace(specie, specie %in% "TURSIOPE", "TURSIOPS"))
 
 unique(dt_an$specie)
+
+# Tabella frequenza per provincia -----------------------------------------
+
+
+prov <- table(dati$provenienza) #numero di campioni per sede
+
+round(prov/length(dati$provenienza)*100, 0) #percentuale per sede
+
+prov2 <- as.data.frame(prov)
+prov2 %>% add_column(percent = round(prov/length(dati$provenienza)*100, 0)) %>% 
+  dplyr::rename(Provincia = Var1, Totale = Freq, Percentuale= percent) %>% arrange(desc(Totale)) %>% view()
+
+#però non mi interessano i campioni per sede in totale, ma i conferimenti per sede. Quindi prendo quanto già fatto sotto
+#per i pancov per specie e replico per mettere insieme tutto.
+
+#voglio avere tabella di conferimenti per sezione, con percentuale anche. 
+
+conf_prov <- dt_an %>%
+  mutate(pancov = replace_na(pancov, "NEG"),
+         esito = replace_na(esito, "Negativo"),
+         pancov = ifelse(pancov=="POS",1,0)) %>% 
+  pivot_wider(names_from = materiale, values_from = pancov, values_fill = 0) %>% 
+  select(-progr) %>% 
+  select(-sacco, -piastra_estrazione, -data_esito,-note) %>%
+  group_by(conf_orig, specie,provenienza, anno) %>% 
+  summarise(across(where(is.numeric), ~ sum(.x, na.rm = T))) %>% #collasso righe di stesso conferimento sommando i valori sulle colonne
+  ungroup() %>% 
+  rowwise() %>%
+  mutate(somma = sum(c_across(c(5:17))),
+         Pos_Pancov = ifelse(somma >=1, "Pos", "Neg")) %>% 
+  select(-(5:17)) #filter(Pos_Pancov == "Pos") %>%  view()
+  
+prov <- table(conf_prov$provenienza)
+prov2 <- as.data.frame(prov)
+
+tab_prov <- prov2 %>% add_column(percent = as.numeric(round(prov/length(conf_prov$provenienza)*100, 1))) %>% 
+  dplyr::rename(Provincia = Var1, Totale = Freq, Percentuale= percent) %>% arrange(desc(Totale)) %>% 
+  janitor::adorn_totals()
+
+tab_prov %>% write.xlsx(file = here("2024.12.14 Summary Animali per Sezione.xlsx"))
+
+
+#Ma pure positivi per sezione.
+
+pos_prov <- dt_an %>%
+  mutate(pancov = replace_na(pancov, "NEG"),
+         esito = replace_na(esito, "Negativo"),
+         pancov = ifelse(pancov=="POS",1,0)) %>% 
+  pivot_wider(names_from = materiale, values_from = pancov, values_fill = 0) %>% 
+  select(-progr) %>% 
+  select(-sacco, -piastra_estrazione, -data_esito,-note) %>%
+  group_by(conf_orig, specie,provenienza, anno) %>% 
+  summarise(across(where(is.numeric), ~ sum(.x, na.rm = T))) %>% #collasso righe di stesso conferimento sommando i valori sulle colonne
+  ungroup() %>% 
+  rowwise() %>%
+  mutate(somma = sum(c_across(c(5:17))),
+         Pos_Pancov = ifelse(somma >=1, "Pos", "Neg")) %>% 
+  select(-(5:17)) %>% filter(Pos_Pancov == "Pos")
+
+prov3 <- table(pos_prov$provenienza)
+prov4 <- as.data.frame(prov3)
+
+tab_pos_prov <- prov4 %>% add_column(percent = as.numeric(round(prov3/length(pos_prov$provenienza)*100, 1))) %>% 
+  dplyr::rename(Provincia = Var1, Totale = Freq, Percentuale= percent) %>% arrange(desc(Totale)) %>% 
+  janitor::adorn_totals()
+
+
+tab_pos_prov %>% write.xlsx(file = here("2024.12.14 Summary Animali positivi per Sezione.xlsx"))
+
+
+
+# Mappa conferimenti per sezione ------------------------------------------
+
+library(sf)
+library(tmap)    # for static and interactive maps
+
+
+ER <- st_read("dati/limits_R_8_municipalities.geojson")
+
+ER2 <- ER %>% 
+  mutate(Sede_IZSLER = if_else(prov_name %in% c("Piacenza", "Parma", "Reggio nell'Emilia", "Modena", "Bologna", "Ravenna", "Ferrara"), prov_name, "Forlì"), .after= minint_finloc)
+ 
+
+
+#identifying branches by color
+
+branch_colors <- scale_fill_manual(values = grey.colors(n = length(unique(ER2$Sede_IZSLER))))
+
+# Calculate center of each province
+
+# Convert dataframe in sf object
+ER2_sf <- st_as_sf(ER2)
+
+# Group by branch and summarize municipalities' geometry by branch
+province_geom <- ER2_sf %>%
+  group_by(Sede_IZSLER) %>%
+  summarize(geometry = st_union(geometry))
+
+# Calculate province centroids
+province_centroids <- province_geom %>%
+  st_centroid()
+
+
+#definire numero di campioni per sede
+
+tab_prov2 <- tab_prov %>% select(-(3)) %>%
+  rename(Sede_IZSLER = Provincia) %>%
+  mutate(Sede_IZSLER = as.character(Sede_IZSLER)) %>% 
+  mutate(Sede_IZSLER = replace(Sede_IZSLER, Sede_IZSLER %in% "FO", "Forlì")) %>%
+  mutate(Sede_IZSLER = replace(Sede_IZSLER, Sede_IZSLER %in% "MO", "Modena")) %>%
+  mutate(Sede_IZSLER = replace(Sede_IZSLER, Sede_IZSLER %in% "BO", "Bologna")) %>% 
+  mutate(Sede_IZSLER = replace(Sede_IZSLER, Sede_IZSLER %in% "RE", "Reggio nell'Emilia")) %>% 
+  mutate(Sede_IZSLER = replace(Sede_IZSLER, Sede_IZSLER %in% "PR", "Parma")) %>% 
+  mutate(Sede_IZSLER = replace(Sede_IZSLER, Sede_IZSLER %in% "PC", "Piacenza")) %>% 
+  mutate(Sede_IZSLER = replace(Sede_IZSLER, Sede_IZSLER %in% "FE", "Ferrara")) %>% 
+  mutate(Sede_IZSLER = replace(Sede_IZSLER, Sede_IZSLER %in% "RA", "Ravenna"))
+  
+tab_pos_prov2 <- tab_pos_prov %>% 
+  filter(Provincia != "Total") %>%
+  select(-(3))
+
+province_geom <- province_geom %>% 
+  left_join(tab_prov2, by="Sede_IZSLER") %>% 
+  add_column(., prov_acr = c("BO","FE","FO","MO","PR","PC","RA","RE"))
+
+
+
+province_geom <- province_geom  %>% 
+  mutate(positivi = if_else(Sede_IZSLER=="Bologna", 23, 
+                            if_else(Sede_IZSLER== "Forlì", 16, 
+                                    if_else(Sede_IZSLER=="Reggio nell'Emilia", 15, 
+                                            if_else(Sede_IZSLER=="Ferrara", 14,
+                                                    if_else(Sede_IZSLER=="Piacenza", 9,
+                                                            if_else(Sede_IZSLER=="Parma", 8,
+                                                                    if_else(Sede_IZSLER=="Modena", 6,0))))))))
+
+province_geom <- province_geom %>% 
+  mutate(label= paste(prov_acr, Totale, sep=" ")) %>% 
+  mutate(label_pos = paste(prov_acr, positivi, sep=" "))
+  
+ 
+
+
+mappa_camp_sez <- tm_shape(province_geom) +
+  tm_polygons("Totale", fill.scale = tm_scale_categorical(values = "greens", values.range = c(0.1, 0.7)), fill.legend = tm_legend_hide())+
+  tm_shape(province_geom) + # Aggiungi le etichette per le province
+  tm_text("label", size = 1, col = "black", fontface = "bold")+
+  tm_layout(legend.position = c("left", "bottom"), legend.title.size = 0.6, legend.text.size = 0.6)
+
+mappa_pos_sez <- tm_shape(province_geom) +
+  tm_polygons("positivi", fill.scale = tm_scale_categorical(values = "oranges", values.range = c(0.1, 0.7)), fill.legend = tm_legend_hide())+
+  tm_shape(province_geom) + # Aggiungi le etichette per le province
+  tm_text("label_pos", size = 1, col = "black", fontface = "bold")+
+  tm_layout(legend.position = c("left", "bottom"), legend.title.size = 0.6, legend.text.size = 0.6)
+
+tmap_save(mappa_camp_sez, filename = "Mappa campionamenti per provincia.png", dpi =600)
+tmap_save(mappa_pos_sez, filename = "Mappa positivi per sezione.png", dpi = 600)
+
+
+
 
 
 # Summary positivi Pancov per specie --------------------------------------
@@ -307,10 +453,13 @@ sieri2022 <- sieri2022 %>% select(-5)
 sieri2023 <- sieri2023 %>% select(-5)
 sieri2024 <- sieri2024 %>% select(-5)
 
+sieri2023 <- sieri2023 %>% 
+  mutate(Sacco=as.numeric(Sacco))
 
 sieri <- bind_rows(sieri2022, sieri2023, sieri2024) #non ho rimosso dall'excel le S e le U dai nconf...
 
 sieri <- clean_names(sieri)
+
 #devo rimuovere le U e le S dagli nconf, quindi
 sieri <- sieri %>%
   mutate(conf_orig = str_remove(conf_orig, " [SU]$"))
@@ -320,8 +469,11 @@ sieri <- sieri %>%
 
 view(sieri)
 unique(sieri$elisa)
+
+
 tab_sieri <- sieri %>% mutate(elisa = replace(elisa, elisa %in% c("INSUFF", "ASSENTE"), NA)) %>% 
   filter(!is.na(elisa)) %>% filter(specie != "GATTO") %>% filter(! (conf_orig==32419 & elisa=="NEG")) %>% #il conferimento 32419 risultava 1 volta pos ed 1 neg su 2 campioni di siero. distinct() teneva solo il negativo, per cui l'ho rimosso. devo trovare alternativa per il futuro.
+  filter(! (conf_orig==32422 & s_elisa=="NEG")) %>% #il conferimento 32422 è stato fatto in due aliquote, di cui solo una positiva per s_elisa
   mutate(elisa = ifelse(elisa=="POS", 1, 0),
          s_elisa = ifelse(s_elisa=="POS", 1, 0), 
          materiale = ifelse(materiale %in% c("UMOR VITREO", "UMOR"), "UMOR ACQUEO", materiale)) %>% 
@@ -385,13 +537,57 @@ save_as_image(., here("exports", "Tabella sieri dicembre 2024.png"), expand=15, 
 
 
 
-sum(ft_sieri$ELISA)
-sum(ft_sieri$s_elisa)
+# Confronto sieri vs pancov -----------------------------------------------
 
-#prova commit
+Pancov <- dt_an %>%
+  mutate(pancov = replace_na(pancov, "NEG"),
+         esito = replace_na(esito, "Negativo"),
+         pancov = ifelse(pancov=="POS",1,0)) %>% 
+  pivot_wider(names_from = materiale, values_from = pancov, values_fill = 0) %>% 
+  select(-progr) %>% 
+  select(-sacco, -piastra_estrazione, -data_esito,-note) %>%
+  group_by(conf_orig, specie,provenienza, anno) %>% 
+  summarise(across(where(is.numeric), ~ sum(.x, na.rm = T))) %>% #collasso righe di stesso conferimento sommando i valori sulle colonne
+  ungroup() %>% 
+  rowwise() %>%
+  mutate(somma = sum(c_across(c(5:17))),
+         Pos_Pancov = ifelse(somma >=1, "Pos", "Neg")) %>% 
+  select(-(5:17)) %>% 
+  filter(Pos_Pancov == "Pos") %>%
+  group_by(conf_orig,anno)
+
+unique(Pancov$conf_orig)
+
+view(sieri)
+
+sieri_pos <-  sieri %>% mutate(elisa = replace(elisa, elisa %in% c("INSUFF", "ASSENTE"), NA)) %>% 
+  filter(!is.na(elisa)) %>% filter(specie != "GATTO") %>% filter(! (conf_orig==32419 & elisa=="NEG")) %>% #il conferimento 32419 risultava 1 volta pos ed 1 neg su 2 campioni di siero. distinct() teneva solo il negativo, per cui l'ho rimosso. devo trovare alternativa per il futuro.
+  filter(! (conf_orig==32422 & s_elisa=="NEG")) %>%   #il conferimento 32422 è stato fatto in due aliquote, di cui solo una positiva per s_elisa
+  mutate(elisa = ifelse(elisa=="POS", 1, 0),
+         s_elisa = ifelse(s_elisa=="POS", 1, 0), 
+         materiale = ifelse(materiale %in% c("UMOR VITREO", "UMOR"), "UMOR ACQUEO", materiale)) %>% 
+  mutate(materiale = ifelse(materiale %in% c("UMOR ACQUEO", "MUSCOLO"), materiale, "SIERO")) %>%
+  distinct(conf_orig, .keep_all = T) %>% 
+  pivot_wider(names_from = materiale, values_from = elisa, values_fill = 0) %>% 
+  select(-percent_pos) %>%
+  group_by(conf_orig, specie) %>% 
+  summarise(across(where(is.numeric), ~ sum(.x, na.rm = T))) %>% 
+  ungroup() %>% 
+  select(-sacco) %>% 
+  rowwise() %>% 
+  mutate(elisa = ifelse(sum(c_across(c(4:5))) >=1, "Pos", "Neg"),
+         s_elisa = ifelse(s_elisa==1, "Pos", "Neg")) %>%
+  select(-SIERO, -`UMOR ACQUEO`) %>%
+  relocate(elisa, .before = s_elisa) %>% 
+  filter(elisa == "Pos") 
 
 
+Cross_reattività <- as.data.frame(intersect(unique(Pancov$conf_orig),unique(sieri_pos$conf_orig))) %>% 
+  rename("conf_orig" = "intersect(unique(Pancov$conf_orig), unique(sieri_pos$conf_orig))")
 
+Pancov_filtrato_sieri <- Pancov %>% filter(conf_orig %in% sieri_pos$conf_orig) 
+
+#pare che non ci sia cross-reattività
 
 
 
