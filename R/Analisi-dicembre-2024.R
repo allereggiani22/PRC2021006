@@ -137,21 +137,10 @@ dt_an <- dt_an %>%
 
 unique(dt_an$specie)
 
-# Tabella frequenza per provincia -----------------------------------------
+# Tabella frequenza per sezione e specie -----------------------------------------
 
 
-prov <- table(dati$provenienza) #numero di campioni per sede
 
-round(prov/length(dati$provenienza)*100, 0) #percentuale per sede
-
-prov2 <- as.data.frame(prov)
-prov2 %>% add_column(percent = round(prov/length(dati$provenienza)*100, 0)) %>% 
-  dplyr::rename(Provincia = Var1, Totale = Freq, Percentuale= percent) %>% arrange(desc(Totale)) %>% view()
-
-#però non mi interessano i campioni per sede in totale, ma i conferimenti per sede. Quindi prendo quanto già fatto sotto
-#per i pancov per specie e replico per mettere insieme tutto.
-
-#voglio avere tabella di conferimenti per sezione, con percentuale anche. 
 
 conf_prov <- dt_an %>%
   mutate(pancov = replace_na(pancov, "NEG"),
@@ -167,6 +156,9 @@ conf_prov <- dt_an %>%
   mutate(somma = sum(c_across(c(5:17))),
          Pos_Pancov = ifelse(somma >=1, "Pos", "Neg")) %>% 
   select(-(5:17)) #filter(Pos_Pancov == "Pos") %>%  view()
+
+
+
   
 prov <- table(conf_prov$provenienza)
 prov2 <- as.data.frame(prov)
@@ -178,22 +170,22 @@ tab_prov <- prov2 %>% add_column(percent = as.numeric(round(prov/length(conf_pro
 tab_prov %>% write.xlsx(file = here("2024.12.14 Summary Animali per Sezione.xlsx"))
 
 
+#vorrei cercare di raggrupparli per specie e provincia
+
+specie_prov <-  conf_prov %>% 
+  group_by(specie, provenienza) %>%
+  summarise(Conteggio_Totali = n(), .groups = "drop") 
+
+
+specie_prov_export <- specie_prov %>% 
+  pivot_wider(names_from = provenienza, values_from = Conteggio_Totali, values_fill = 0) %>%
+  janitor::adorn_totals(where = c("row","col"))     # Conta le righe per ogni combinazione
+
+specie_prov_export %>% write.xlsx(file = here("2024.12.17 Tabella campionamenti per specie e provincia.xlsx"))
+
 #Ma pure positivi per sezione.
 
-pos_prov <- dt_an %>%
-  mutate(pancov = replace_na(pancov, "NEG"),
-         esito = replace_na(esito, "Negativo"),
-         pancov = ifelse(pancov=="POS",1,0)) %>% 
-  pivot_wider(names_from = materiale, values_from = pancov, values_fill = 0) %>% 
-  select(-progr) %>% 
-  select(-sacco, -piastra_estrazione, -data_esito,-note) %>%
-  group_by(conf_orig, specie,provenienza, anno) %>% 
-  summarise(across(where(is.numeric), ~ sum(.x, na.rm = T))) %>% #collasso righe di stesso conferimento sommando i valori sulle colonne
-  ungroup() %>% 
-  rowwise() %>%
-  mutate(somma = sum(c_across(c(5:17))),
-         Pos_Pancov = ifelse(somma >=1, "Pos", "Neg")) %>% 
-  select(-(5:17)) %>% filter(Pos_Pancov == "Pos")
+pos_prov <- conf_prov %>% filter(Pos_Pancov == "Pos")
 
 prov3 <- table(pos_prov$provenienza)
 prov4 <- as.data.frame(prov3)
@@ -204,6 +196,44 @@ tab_pos_prov <- prov4 %>% add_column(percent = as.numeric(round(prov3/length(pos
 
 
 tab_pos_prov %>% write.xlsx(file = here("2024.12.14 Summary Animali positivi per Sezione.xlsx"))
+
+#ora faccio la stessa conta per provincia e specie, ma sui positivi pancov
+
+pos_specie_prov <- pos_prov %>% 
+  group_by(specie, provenienza) %>%
+  summarise(Conteggio_Positivi = n(), .groups = "drop") # %>% 
+ 
+
+pos_specie_prov_export <- pos_specie_prov %>% 
+  pivot_wider(names_from = provenienza, values_from = Conteggio_Positivi, values_fill = 0) %>%
+  janitor::adorn_totals(where = c("row","col"))
+  
+
+pos_specie_prov_export %>% write.xlsx(file = here("2024.12.17 Tabella positivi pancov per specie e provincia.xlsx"))
+
+
+
+# Unisci le due tabelle, mantenendo tutti i dati dei positivi e aggiungendo i totali
+tabella_prevalenza <- pos_specie_prov %>%
+  left_join(specie_prov, by = c("specie", "provenienza")) %>%
+  # Calcola la prevalenza
+  mutate(Prevalenza = case_when(
+    is.na(Conteggio_Totali) ~ NA_real_,  # Se non ci sono totali (combinazione mancante), metti NA
+    Conteggio_Totali == 0 ~ NA_real_,    # Se i totali sono 0, metti NA
+    TRUE ~ round(Conteggio_Positivi / Conteggio_Totali * 100, 2)  # Calcola la prevalenza
+  )) %>%
+  select(specie, provenienza, Prevalenza)
+
+# Rimetti i dati in formato largo (pivot_wider)
+tabella_prevalenza_wide <- tabella_prevalenza %>%
+  pivot_wider(names_from = provenienza, values_from = Prevalenza, values_fill = list(Prevalenza = NA))
+
+# Visualizza il risultato
+view(tabella_prevalenza_wide)
+
+#esporta risultato
+
+tabella_prevalenza_wide %>% write.xlsx(file = here("2024.12.17 Tabella prevalenza pancov per provincia.xlsx"))
 
 
 
@@ -449,12 +479,10 @@ sieri2022 <- add_column(sieri2022,Anno= 2022, .after="Materiale")
 sieri2023 <- add_column(sieri2023,Anno= 2023, .after="Materiale")
 sieri2024 <- add_column(sieri2024,Anno= 2024, .after="Materiale")
 
-sieri2022 <- sieri2022 %>% select(-5)
-sieri2023 <- sieri2023 %>% select(-5)
-sieri2024 <- sieri2024 %>% select(-5)
+sieri2022 <- sieri2022 %>% select(-6)
+sieri2023 <- sieri2023 %>% select(-6)
+sieri2024 <- sieri2024 %>% select(-6)
 
-sieri2023 <- sieri2023 %>% 
-  mutate(Sacco=as.numeric(Sacco))
 
 sieri <- bind_rows(sieri2022, sieri2023, sieri2024) #non ho rimosso dall'excel le S e le U dai nconf...
 
@@ -472,7 +500,7 @@ unique(sieri$elisa)
 
 
 tab_sieri <- sieri %>% mutate(elisa = replace(elisa, elisa %in% c("INSUFF", "ASSENTE"), NA)) %>% 
-  filter(!is.na(elisa)) %>% filter(specie != "GATTO") %>% filter(! (conf_orig==32419 & elisa=="NEG")) %>% #il conferimento 32419 risultava 1 volta pos ed 1 neg su 2 campioni di siero. distinct() teneva solo il negativo, per cui l'ho rimosso. devo trovare alternativa per il futuro.
+  filter(!is.na(elisa)) %>% filter(specie != c("GATTO","CINGHIALE")) %>% filter(! (conf_orig==32419 & elisa=="NEG")) %>% #il conferimento 32419 risultava 1 volta pos ed 1 neg su 2 campioni di siero. distinct() teneva solo il negativo, per cui l'ho rimosso. devo trovare alternativa per il futuro.
   filter(! (conf_orig==32422 & s_elisa=="NEG")) %>% #il conferimento 32422 è stato fatto in due aliquote, di cui solo una positiva per s_elisa
   mutate(elisa = ifelse(elisa=="POS", 1, 0),
          s_elisa = ifelse(s_elisa=="POS", 1, 0), 
@@ -507,6 +535,7 @@ select(-percent_pos) %>%
 group_by(conf_orig, specie) %>% 
 summarise(across(where(is.numeric), ~ sum(.x, na.rm = T))) %>%
   ungroup() %>% 
+  #select(-sacco) %>% 
   rowwise() %>% 
   mutate(elisa = ifelse(sum(c_across(c(4:5))) >=1, "Pos", "Neg"),
          s_elisa = ifelse(s_elisa==1, "Pos", "Neg")) %>%
@@ -516,8 +545,8 @@ relocate(elisa, .before = s_elisa) %>%
   summarise(Totale = n(), elisa = sum(elisa == "Pos"), s_elisa= sum(s_elisa == "Pos")) %>% filter(.,Totale>10) %>% 
   arrange(desc(elisa)) %>% janitor::adorn_totals("row", name = "TOTALE") #adorn_totals aggiunge riga o colonna con i totali!
 
-tab_sieri %>%  write.xlsx(file = here("2024.12.13 Summary sieri positivi SARS-CoV-2 per Specie.xlsx"))
-  
+tab_sieri %>%  write.xlsx(file = here("2024.12.17 Summary sieri positivi SARS-CoV-2 per Specie.xlsx"))
+
 library(flextable)
 set_flextable_defaults(background.color = "white") #serve per evitare trasparenza!
 
@@ -528,7 +557,82 @@ ft_sieri <- tab_sieri %>%
   hline(., i = 12, part = "body") #ultimo comando aggiunge linea prima di ultima riga (dopo la 12)
 
 
-#ft_sieri %>% set_caption(caption = "Tabella 1: Tabella riassuntiva delle specie sottoposte ad analisi sierologica per SARS-CoV-2. Nelle diverse colonne sono indicati il numero di soggetti analizzati in totale e quelli risultati positivi rispettivamente all’ELISA anti-N ed alla sELISA anti-S.")
+
+# se voglio calcolare la distribuzione di sieri positivi per provincia e specie --------
+
+
+sieri_an <- sieri %>% mutate(elisa = replace(elisa, elisa %in% c("INSUFF", "ASSENTE"), NA)) %>% 
+  filter(!is.na(elisa)) %>% filter(specie != c("GATTO", "CINGHIALE")) %>% filter(! (conf_orig==32419 & elisa=="NEG")) %>% #il conferimento 32419 risultava 1 volta pos ed 1 neg su 2 campioni di siero. distinct() teneva solo il negativo, per cui l'ho rimosso. devo trovare alternativa per il futuro.
+  filter(! (conf_orig==32422 & s_elisa=="NEG")) %>%   #il conferimento 32422 è stato fatto in due aliquote, di cui solo una positiva per s_elisa
+  mutate(elisa = ifelse(elisa=="POS", 1, 0),
+         s_elisa = ifelse(s_elisa=="POS", 1, 0), 
+         materiale = ifelse(materiale %in% c("UMOR VITREO", "UMOR"), "UMOR ACQUEO", materiale)) %>% 
+  mutate(materiale = ifelse(materiale %in% c("UMOR ACQUEO", "MUSCOLO"), materiale, "SIERO")) %>%
+  distinct(conf_orig, .keep_all = T) %>% 
+  pivot_wider(names_from = materiale, values_from = elisa, values_fill = 0) %>%
+  select(-percent_pos) %>%
+  group_by(conf_orig, specie, provenienza) %>% 
+  summarise(across(where(is.numeric), ~ sum(.x, na.rm = T))) %>% 
+  ungroup() %>% 
+  #select(-sacco) %>% 
+  rowwise() %>% 
+  mutate(elisa = ifelse(sum(c_across(c(4:5))) >=1, "Pos", "Neg"),
+         s_elisa = ifelse(s_elisa==1, "Pos", "Neg")) %>%
+  select(-SIERO, -`UMOR ACQUEO`) %>%
+  relocate(elisa, .before = s_elisa)
+
+
+sieri_pos_s <-  sieri_an %>% 
+  filter(s_elisa == "Pos")  
+  
+
+
+sieri_sp_prov <- sieri_an %>% group_by(specie, provenienza) %>%
+  summarise(Conteggio_Totali = n(), .groups = "drop")
+
+sieri_sp_prov_export <- sieri_sp_prov %>% 
+  pivot_wider(names_from = provenienza, values_from = Conteggio_Totali, values_fill = 0) %>%
+  janitor::adorn_totals(where = c("row","col"))
+
+sieri_sp_prov_export %>% write.xlsx(file = here("2024.12.17 Summary sieri per sezione e specie.xlsx"))
+
+sieri_pos_sp_prov <- sieri_pos_s %>% 
+  group_by(specie, provenienza) %>%
+  summarise(Conteggio_Positivi = n(), .groups = "drop")
+
+sieri_pos_sp_prov_export <- sieri_pos_sp_prov %>% 
+  pivot_wider(names_from = provenienza, values_from = Conteggio_Positivi, values_fill = 0) %>%
+  janitor::adorn_totals(where = c("row","col"))
+
+sieri_pos_sp_prov_export %>% write.xlsx(file = here("2024.12.17 Summary sieri positivi S per sezione e specie.xlsx"))
+
+# Unisci le due tabelle, mantenendo tutti i dati dei positivi e aggiungendo i totali
+prevalenza_sieri <- sieri_pos_sp_prov %>%
+  left_join(sieri_sp_prov, by = c("specie", "provenienza")) %>%
+  # Calcola la prevalenza
+  mutate(Prevalenza = case_when(
+    is.na(Conteggio_Totali) ~ NA_real_,  # Se non ci sono totali (combinazione mancante), metti NA
+    Conteggio_Totali == 0 ~ NA_real_,    # Se i totali sono 0, metti NA
+    TRUE ~ round(Conteggio_Positivi / Conteggio_Totali * 100, 2)  # Calcola la prevalenza
+  )) %>%
+  select(specie, provenienza, Prevalenza)
+
+# Rimetti i dati in formato largo (pivot_wider)
+prevalenza_sieri_wide <- prevalenza_sieri %>%
+  pivot_wider(names_from = provenienza, values_from = Prevalenza, values_fill = list(Prevalenza = NA))
+
+# Visualizza il risultato
+view(prevalenza_sieri_wide)
+
+#esporta risultato
+
+prevalenza_sieri_wide %>% write.xlsx(file = here("2024.12.17 Tabella prevalenza sieri per sezione e specie.xlsx"))
+
+  
+  
+
+
+
 
 sum(ft_sieri$Totali)
 
@@ -560,25 +664,7 @@ unique(Pancov$conf_orig)
 
 view(sieri)
 
-sieri_pos <-  sieri %>% mutate(elisa = replace(elisa, elisa %in% c("INSUFF", "ASSENTE"), NA)) %>% 
-  filter(!is.na(elisa)) %>% filter(specie != "GATTO") %>% filter(! (conf_orig==32419 & elisa=="NEG")) %>% #il conferimento 32419 risultava 1 volta pos ed 1 neg su 2 campioni di siero. distinct() teneva solo il negativo, per cui l'ho rimosso. devo trovare alternativa per il futuro.
-  filter(! (conf_orig==32422 & s_elisa=="NEG")) %>%   #il conferimento 32422 è stato fatto in due aliquote, di cui solo una positiva per s_elisa
-  mutate(elisa = ifelse(elisa=="POS", 1, 0),
-         s_elisa = ifelse(s_elisa=="POS", 1, 0), 
-         materiale = ifelse(materiale %in% c("UMOR VITREO", "UMOR"), "UMOR ACQUEO", materiale)) %>% 
-  mutate(materiale = ifelse(materiale %in% c("UMOR ACQUEO", "MUSCOLO"), materiale, "SIERO")) %>%
-  distinct(conf_orig, .keep_all = T) %>% 
-  pivot_wider(names_from = materiale, values_from = elisa, values_fill = 0) %>% 
-  select(-percent_pos) %>%
-  group_by(conf_orig, specie) %>% 
-  summarise(across(where(is.numeric), ~ sum(.x, na.rm = T))) %>% 
-  ungroup() %>% 
-  select(-sacco) %>% 
-  rowwise() %>% 
-  mutate(elisa = ifelse(sum(c_across(c(4:5))) >=1, "Pos", "Neg"),
-         s_elisa = ifelse(s_elisa==1, "Pos", "Neg")) %>%
-  select(-SIERO, -`UMOR ACQUEO`) %>%
-  relocate(elisa, .before = s_elisa) %>% 
+sieri_pos <-  sieri_an %>% 
   filter(elisa == "Pos") 
 
 
