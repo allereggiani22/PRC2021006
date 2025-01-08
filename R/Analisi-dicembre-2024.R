@@ -1,6 +1,7 @@
 source(here('R', 'librerie.R'))
 
 
+
 # dt2022 <- read_excel("dati/Dati COVID 2022 per corso R.xlsx", 
 #                    col_types = c("numeric", "text", "text", 
 #                                  "numeric", "text", "text", "date", 
@@ -505,30 +506,30 @@ tab_sieri <- sieri %>% mutate(elisa = replace(elisa, elisa %in% c("INSUFF", "ASS
   mutate(elisa = ifelse(elisa=="POS", 1, 0),
          s_elisa = ifelse(s_elisa=="POS", 1, 0), 
          materiale = ifelse(materiale %in% c("UMOR VITREO", "UMOR"), "UMOR ACQUEO", materiale)) %>% 
-  mutate(materiale = ifelse(materiale %in% c("UMOR ACQUEO", "MUSCOLO"), materiale, "SIERO")) %>% #,
-  #        specie = replace(specie, specie %in% "CAPRIOLO", "ROE DEER"),
-  #        specie = replace(specie, specie %in% "DAINO", "FALLOW DEER"),
-  #        specie = replace(specie, specie %in% "TASSO", "BADGER"),
-  #        specie = replace(specie, specie %in% "ISTRICE", "PORCUPINE"),
-  #        specie = replace(specie, specie %in% "LEPRE", "HARE"),
-  #        specie = replace(specie, specie %in% "RICCIO", "HEDGEHOG"),
-  #        specie = replace(specie, specie %in% "SCOIATTOLO", "SQUIRREL"),
-  #        specie = replace(specie, specie %in% "LUPO", "WOLF"),
-  #        specie = replace(specie, specie %in% "CERVO", "DEER"),
-  #        specie = replace(specie, specie %in% "FAINA", "BEECH MARTEN"),
-  #        specie = replace(specie, specie %in% "DELFINO", "TURSIOPS"),
-  #        specie = replace(specie, specie %in% "VOLPE", "RED FOX"),
-  #        specie = replace(specie, specie %in% "SILVILAGO", "MARSH RABBIT"),
-  #        specie = replace(specie, specie %in% "PUZZOLA", "SKUNK"),
-  #        specie = replace(specie, specie %in% "CANGURO", "WALLABY"),
-  #        specie = replace(specie, specie %in% "PUZZOLA", "SKUNK"),
-  #        specie = replace(specie, specie %in% "CONIGLIO", "RABBIT"),
-  #        specie = replace(specie, specie %in% "LONTRA", "OTTER"),
-  #        specie = replace(specie, specie %in% "SURICATO", "MEERKAT"),
-  #        specie = replace(specie, specie %in% "AGUTI DI AZARA", "AZARA'S AGOUTI"),
-  #        specie = replace(specie, specie %in% "RATTO", "RAT"),
-  #        specie = replace(specie, specie %in% "TOPO", "MOUSE"),
-  #        specie = replace(specie, specie %in% "GHIRO", "DORMOUSE")) %>%
+  mutate(materiale = ifelse(materiale %in% c("UMOR ACQUEO", "MUSCOLO"), materiale, "SIERO") ,
+         specie = replace(specie, specie %in% "CAPRIOLO", "ROE DEER"),
+         specie = replace(specie, specie %in% "DAINO", "FALLOW DEER"),
+         specie = replace(specie, specie %in% "TASSO", "BADGER"),
+         specie = replace(specie, specie %in% "ISTRICE", "PORCUPINE"),
+         specie = replace(specie, specie %in% "LEPRE", "HARE"),
+         specie = replace(specie, specie %in% "RICCIO", "HEDGEHOG"),
+         specie = replace(specie, specie %in% "SCOIATTOLO", "SQUIRREL"),
+         specie = replace(specie, specie %in% "LUPO", "WOLF"),
+         specie = replace(specie, specie %in% "CERVO", "DEER"),
+         specie = replace(specie, specie %in% "FAINA", "BEECH MARTEN"),
+         specie = replace(specie, specie %in% "DELFINO", "TURSIOPS"),
+         specie = replace(specie, specie %in% "VOLPE", "RED FOX"),
+         specie = replace(specie, specie %in% "SILVILAGO", "MARSH RABBIT"),
+         specie = replace(specie, specie %in% "PUZZOLA", "SKUNK"),
+         specie = replace(specie, specie %in% "CANGURO", "WALLABY"),
+         specie = replace(specie, specie %in% "PUZZOLA", "SKUNK"),
+         specie = replace(specie, specie %in% "CONIGLIO", "RABBIT"),
+         specie = replace(specie, specie %in% "LONTRA", "OTTER"),
+         specie = replace(specie, specie %in% "SURICATO", "MEERKAT"),
+         specie = replace(specie, specie %in% "AGUTI DI AZARA", "AZARA'S AGOUTI"),
+         specie = replace(specie, specie %in% "RATTO", "RAT"),
+         specie = replace(specie, specie %in% "TOPO", "MOUSE"),
+         specie = replace(specie, specie %in% "GHIRO", "DORMOUSE")) %>%
   distinct(conf_orig, .keep_all = T) %>%
 pivot_wider(names_from = materiale, values_from = elisa, values_fill = 0) %>%
 select(-percent_pos) %>%
@@ -538,12 +539,13 @@ summarise(across(where(is.numeric), ~ sum(.x, na.rm = T))) %>%
   #select(-sacco) %>% 
   rowwise() %>% 
   mutate(elisa = ifelse(sum(c_across(c(4:5))) >=1, "Pos", "Neg"),
-         s_elisa = ifelse(s_elisa==1, "Pos", "Neg")) %>%
+         s_elisa = ifelse(s_elisa==1, "Pos", "Neg")) %>% 
 select(-SIERO, -`UMOR ACQUEO`) %>%
 relocate(elisa, .before = s_elisa) %>% 
   group_by(specie) %>% 
   summarise(Totale = n(), elisa = sum(elisa == "Pos"), s_elisa= sum(s_elisa == "Pos")) %>% filter(.,Totale>10) %>% 
-  arrange(desc(elisa)) %>% janitor::adorn_totals("row", name = "TOTALE") #adorn_totals aggiunge riga o colonna con i totali!
+    filter(., elisa>0) %>% 
+  arrange(desc(elisa)) %>% janitor::adorn_totals("row", name = "TOTAL") #adorn_totals aggiunge riga o colonna con i totali!
 
 tab_sieri %>%  write.xlsx(file = here("2024.12.17 Summary sieri positivi SARS-CoV-2 per Specie.xlsx"))
 
@@ -553,12 +555,18 @@ set_flextable_defaults(background.color = "white") #serve per evitare trasparenz
 
 
 ft_sieri <- tab_sieri %>% 
-  flextable() %>% autofit() %>% set_header_labels(.,specie="Specie", elisa="N ELISA", s_elisa="S ELISA") %>% set_caption(caption = as_paragraph(as_b("Risultati dell'analisi sierologica. Le specie con meno di 10 individui tutti negativi sono state escluse"))) %>%  
-  hline(., i = 12, part = "body") #ultimo comando aggiunge linea prima di ultima riga (dopo la 12)
+  flextable() %>% autofit() %>% set_header_labels(.,specie="Species", Totale="Total", elisa="N ELISA", s_elisa="S ELISA")%>% # set_caption(caption = as_paragraph(as_b("Risultati dell'analisi sierologica. Le specie con meno di 10 individui tutti negativi sono state escluse"))) %>%  
+  hline(., i = 9, part = "body") #ultimo comando aggiunge linea prima di ultima riga (dopo la 12)
+
+sum(ft_sieri$Totali)
+
+ft_sieri %>% 
+  save_as_image(., here("exports", "Tabella sieri dicembre 2024 ENG.png"), expand=15, res = 200) #se non si setta background bianco prima sarà trasparente di default!
 
 
 
-# se voglio calcolare la distribuzione di sieri positivi per provincia e specie --------
+
+# Sieri positivi per provincia e specie --------
 
 
 sieri_an <- sieri %>% mutate(elisa = replace(elisa, elisa %in% c("INSUFF", "ASSENTE"), NA)) %>% 
@@ -634,11 +642,6 @@ prevalenza_sieri_wide %>% write.xlsx(file = here("2024.12.17 Tabella prevalenza 
 
 
 
-sum(ft_sieri$Totali)
-
-ft_sieri %>% 
-save_as_image(., here("exports", "Tabella sieri dicembre 2024.png"), expand=15, res = 200) #se non si setta background bianco prima sarà trasparente di default!
-
 
 
 # Confronto sieri vs pancov -----------------------------------------------
@@ -675,5 +678,10 @@ Pancov_filtrato_sieri <- Pancov %>% filter(conf_orig %in% sieri_pos$conf_orig)
 
 #pare che non ci sia cross-reattività
 
+
+
+#calcolo intervalli di confidenza
+
+binom.test(14,71)
 
 
