@@ -500,7 +500,7 @@ view(sieri)
 unique(sieri$elisa)
 
 
-tab_sieri <- sieri %>% mutate(elisa = replace(elisa, elisa %in% c("INSUFF", "ASSENTE"), NA)) %>% 
+tab_sieri_2 <- sieri %>% mutate(elisa = replace(elisa, elisa %in% c("INSUFF", "ASSENTE"), NA)) %>% 
   filter(!is.na(elisa)) %>% filter(specie != c("GATTO","CINGHIALE")) %>% filter(! (conf_orig==32419 & elisa=="NEG")) %>% #il conferimento 32419 risultava 1 volta pos ed 1 neg su 2 campioni di siero. distinct() teneva solo il negativo, per cui l'ho rimosso. devo trovare alternativa per il futuro.
   filter(! (conf_orig==32422 & s_elisa=="NEG")) %>% #il conferimento 32422 è stato fatto in due aliquote, di cui solo una positiva per s_elisa
   mutate(elisa = ifelse(elisa=="POS", 1, 0),
@@ -529,7 +529,8 @@ tab_sieri <- sieri %>% mutate(elisa = replace(elisa, elisa %in% c("INSUFF", "ASS
          specie = replace(specie, specie %in% "AGUTI DI AZARA", "AZARA'S AGOUTI"),
          specie = replace(specie, specie %in% "RATTO", "RAT"),
          specie = replace(specie, specie %in% "TOPO", "MOUSE"),
-         specie = replace(specie, specie %in% "GHIRO", "DORMOUSE")) %>%
+         specie = replace(specie, specie %in% "GHIRO", "DORMOUSE"),
+         specie = replace(specie, specie %in% "GATTO SELVATICO", "EUROPEAN WILDCAT")) %>%
   distinct(conf_orig, .keep_all = T) %>%
 pivot_wider(names_from = materiale, values_from = elisa, values_fill = 0) %>%
 select(-percent_pos) %>%
@@ -543,9 +544,84 @@ summarise(across(where(is.numeric), ~ sum(.x, na.rm = T))) %>%
 select(-SIERO, -`UMOR ACQUEO`) %>%
 relocate(elisa, .before = s_elisa) %>% 
   group_by(specie) %>% 
-  summarise(Totale = n(), elisa = sum(elisa == "Pos"), s_elisa= sum(s_elisa == "Pos")) %>% filter(.,Totale>10) %>% 
-    filter(., elisa>0) %>% 
-  arrange(desc(elisa)) %>% janitor::adorn_totals("row", name = "TOTAL") #adorn_totals aggiunge riga o colonna con i totali!
+  summarise(Totale = n(), elisa = sum(elisa == "Pos"), s_elisa= sum(s_elisa == "Pos"), .groups = "drop") %>%  #%>% #filter(.,Totale>10) %>% 
+    #filter(., elisa>0) %>% 
+  #arrange(desc(elisa)) %>% 
+janitor::adorn_totals("row", name = "TOTAL") #adorn_totals aggiunge riga o colonna con i totali!
+
+# Tab sieri modificata per EUSV 2025 --------------------------------------
+
+tab_sieri <- sieri %>% 
+  mutate(elisa = replace(elisa, elisa %in% c("INSUFF", "ASSENTE"), NA)) %>% 
+  filter(!is.na(elisa)) %>% 
+  filter(!specie %in% c("GATTO")) %>% #ho rimosso il filtro sulla specie cinghiale, perché uno è stato testato. sopra non funzionava e lo contava, quindi non tornavano i numeri
+  filter(!(conf_orig == 32419 & elisa == "NEG")) %>% # il conferimento 32419 risultava 1 volta pos ed 1 neg su 2 campioni di siero. distinct() teneva solo il negativo, per cui l'ho rimosso. devo trovare alternativa per il futuro.
+  filter(!(conf_orig == 32422 & s_elisa == "NEG")) %>% # il conferimento 32422 è stato fatto in due aliquote, di cui solo una positiva per s_elisa
+  mutate(
+    elisa = ifelse(elisa == "POS", 1, 0),
+    s_elisa = ifelse(s_elisa == "POS", 1, 0),
+    materiale = ifelse(materiale %in% c("UMOR VITREO", "UMOR"), "UMOR ACQUEO", materiale),
+    materiale = ifelse(materiale %in% c("UMOR ACQUEO", "MUSCOLO"), materiale, "SIERO"),
+    specie = recode(specie,
+                    "CAPRIOLO" = "ROE DEER",
+                    "DAINO" = "FALLOW DEER",
+                    "TASSO" = "BADGER",
+                    "ISTRICE" = "PORCUPINE",
+                    "LEPRE" = "HARE",
+                    "RICCIO" = "HEDGEHOG",
+                    "SCOIATTOLO" = "SQUIRREL",
+                    "LUPO" = "WOLF",
+                    "CERVO" = "DEER",
+                    "FAINA" = "BEECH MARTEN",
+                    "DELFINO" = "TURSIOPS",
+                    "VOLPE" = "RED FOX",
+                    "SILVILAGO" = "MARSH RABBIT",
+                    "PUZZOLA" = "SKUNK",
+                    "CONIGLIO" = "RABBIT",
+                    "LONTRA" = "OTTER",
+                    "SURICATO" = "MEERKAT",
+                    "AGUTI DI AZARA" = "AZARA'S AGOUTI",
+                    "RATTO" = "RAT",
+                    "TOPO" = "MOUSE",
+                    "GHIRO" = "DORMOUSE",
+                    "GATTO SELVATICO" = "EUROPEAN WILDCAT")
+  ) %>%
+  distinct(conf_orig, .keep_all = TRUE) %>%
+  pivot_wider(names_from = materiale, values_from = elisa, values_fill = 0) %>%
+  select(-percent_pos) %>%
+  group_by(conf_orig, specie) %>% 
+  summarise(across(where(is.numeric), ~ sum(.x, na.rm = TRUE)), .groups = "drop") %>%
+  rowwise() %>% 
+  mutate(
+    elisa = ifelse(sum(c_across(c(4:5))) >= 1, "Pos", "Neg"),
+    s_elisa = ifelse(s_elisa == 1, "Pos", "Neg")
+  ) %>%
+  select(-SIERO, -`UMOR ACQUEO`) %>%
+  relocate(elisa, .before = s_elisa) %>%
+  group_by(specie) %>% 
+  summarise(
+    Totale = n(),
+    elisa = sum(elisa == "Pos"),
+    s_elisa = sum(s_elisa == "Pos"),
+    .groups = "drop"
+  ) %>%
+  # Collassa tutte le specie con Totale <=10 e/o elisa = 0 in una sola riga "OTHER SPECIES"
+  mutate(specie = ifelse(elisa == 0, "OTHER SPECIES", specie)) %>%
+  group_by(specie) %>%
+  summarise(
+    Totale = sum(Totale),
+    elisa = sum(elisa),
+    s_elisa = sum(s_elisa),
+    .groups = "drop"
+  ) %>%
+  mutate(ord = ifelse(specie == "OTHER SPECIES", 1, 0)) %>% # 1 = la mettiamo dopo
+  arrange(ord, desc(elisa), desc(Totale)) %>%
+  select(-ord) %>% 
+janitor::adorn_totals("row", name = "TOTAL") #adorn_totals aggiunge riga o colonna con i totali!
+
+
+
+
 
 tab_sieri %>%  write.xlsx(file = here("2024.12.17 Summary sieri positivi SARS-CoV-2 per Specie.xlsx"))
 
@@ -555,13 +631,15 @@ set_flextable_defaults(background.color = "white") #serve per evitare trasparenz
 
 
 ft_sieri <- tab_sieri %>% 
-  flextable() %>% autofit() %>% set_header_labels(.,specie="Species", Totale="Total", elisa="N ELISA", s_elisa="S ELISA")%>% # set_caption(caption = as_paragraph(as_b("Risultati dell'analisi sierologica. Le specie con meno di 10 individui tutti negativi sono state escluse"))) %>%  
-  hline(., i = 9, part = "body") #ultimo comando aggiunge linea prima di ultima riga (dopo la 12)
+  flextable() %>% set_header_labels(.,specie="Species", Totale="Total", elisa="Positive for N-ELISA", s_elisa="Positive for S-ELISA")%>% #set_caption(caption = as_paragraph(as_b("Figure 2: Summary of serological analysis results: all samples were screened with an anti-N ELISA; the positive ones were tested again with an anti-S ELISA for confirmation. Species where no N ELISA tested positive are not shown."))) %>% 
+  #add_footer_lines(values = "Figure 2: Summary of serological analysis results: all samples were screened with an anti-N ELISA; the positive ones were tested again with an anti-S ELISA for confirmation. Species where no N ELISA tested positive are not shown.") %>% bold(bold = T, part = "footer") %>% 
+  autofit() %>%
+  hline(., i = 11, part = "body") #ultimo comando aggiunge linea prima di ultima riga (dopo la 12)
 
 sum(ft_sieri$Totali)
 
 ft_sieri %>% 
-  save_as_image(., here("exports", "Tabella sieri dicembre 2024 ENG.png"), expand=15, res = 200) #se non si setta background bianco prima sarà trasparente di default!
+  save_as_image(., here("exports", "Tabella sierologia EuSV 2025_rev2.png"), expand=15, res = 200) #se non si setta background bianco prima sarà trasparente di default!
 
 
 
@@ -683,5 +761,36 @@ Pancov_filtrato_sieri <- Pancov %>% filter(conf_orig %in% sieri_pos$conf_orig)
 #calcolo intervalli di confidenza
 
 binom.test(14,71)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
