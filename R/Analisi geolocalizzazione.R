@@ -603,24 +603,216 @@ view(da4)
 
 write.xlsx(da4, "./exports/coordinate conferimenti PRC2021006.xlsx")
 
+
+
+
+# Integrazione dati sierologia --------------------------------------------
+
+sieri2022 <-  read_excel("dati/11122024 Elenco Campioni PRC 2021_006.xlsx", 
+                         sheet = "SIERI 2022", col_types = c("skip", 
+                                                             "text", "skip", "text", "text", "skip", 
+                                                             "text", "numeric", "skip", "text", 
+                                                             "text", "numeric", "text"))
+
+sieri2023 <-  read_excel("dati/11122024 Elenco Campioni PRC 2021_006.xlsx", 
+                         sheet = "SIERI 2023", col_types = c("text", 
+                                                             "text", "text", "text", "text", "skip", 
+                                                             "text", "text", "numeric", "text", 
+                                                             "skip"))
+
+sieri2024 <- read_excel("dati/11122024 Elenco Campioni PRC 2021_006.xlsx", 
+                        sheet = "SIERI 2024", col_types = c("text", 
+                                                            "text", "text", "text", "numeric", 
+                                                            "skip", "text", "text", "numeric", 
+                                                            "text", "skip"))
+
+
+sieri2022 <- add_column(sieri2022,Anno= 2022, .after="Materiale")
+sieri2023 <- add_column(sieri2023,Anno= 2023, .after="Materiale")
+sieri2024 <- add_column(sieri2024,Anno= 2024, .after="Materiale")
+
+sieri2022 <- sieri2022 %>% select(-6)
+sieri2023 <- sieri2023 %>% select(-6)
+sieri2024 <- sieri2024 %>% select(-6)
+
+
+sieri <- bind_rows(sieri2022, sieri2023, sieri2024) #non ho rimosso dall'excel le S e le U dai nconf...
+
+sieri <- clean_names(sieri)
+
+#devo rimuovere le U e le S dagli nconf, quindi
+sieri <- sieri %>%
+  mutate(conf_orig = str_remove(conf_orig, " [SU]$"))
+
+view(sieri)
+
+sieri <- sieri %>% separate(.,conf_orig,c("conferimento","n_campione"), sep = "/") %>%
+  mutate(n_campione = na.fill(n_campione, (1))) %>% 
+  dplyr::rename(anno_reg = anno) %>% 
+  mutate(conferimento = as.numeric(conferimento))
+
+da4 <- read.xlsx("./exports/coordinate conferimenti PRC2021006.xlsx")
+
+
+sieri_n_pos <- sieri %>% filter(elisa == "POS") %>%
+  filter(!(conferimento == 32422 & s_elisa == "NEG")) %>% 
+    filter(specie != "GATTO")
+
+#cerco di capire perché alcune righe dai sieri pos non ci sono in da4
+
+righe_non_matchate <- sieri_n_pos %>%
+  anti_join(da4, by = c("conferimento", "n_campione", "specie", "anno_reg"))
+
+view(righe_non_matchate)
+view(da4)
+
+
+#right_join(da4, by= c("conferimento", "n_campione", "specie", "anno_reg")) %>% filter(elisa == "POS") %>% view()
+
+write.xlsx(righe_non_matchate, file = "./exports/conferimenti da cercare.xlsx")
+
+#trovate informazioni relative a conferimenti non matchati, aggiunte al file excel
+
+righe_non_matchate <- read.xlsx("./exports/conferimenti da cercare.xlsx")
+view(righe_non_matchate)
+
+col_comuni <- intersect(names(da4), names(righe_non_matchate))
+
+da4_sieri <- bind_rows(
+  da4,
+  righe_non_matchate %>% select(all_of(col_comuni))
+)
+
+view(da4_sieri)
+
+da4_sieri <- geotagga_completo_con_cache(da4_sieri)
+view(da4_sieri)
+
+#ora posso integrare i dati di positività sierologica
+
+da4_sieri <- da4_sieri %>% left_join(sieri_n_pos, by = c("conferimento", "n_campione", "specie", "anno_reg"))
+
+
+# integrazione dati Pancov ------------------------------------------------
+
+#cerco di unire i dati pancov, per ottenere il dataset completo
+
+dt2022 <- read_excel("dati/11122024 Elenco Campioni PRC 2021_006.xlsx", 
+                     sheet = "CAMPIONI PRC COVID 2022", col_types = c("numeric", 
+                                                                      "skip", "text", "skip", "text", 
+                                                                      "text", "skip", "text", "text", "date", 
+                                                                      "text", "date", "text", "skip", "text", 
+                                                                      "skip"))
+
+dt2023 <- read_excel("dati/11122024 Elenco Campioni PRC 2021_006.xlsx", 
+                     sheet = "CAMPIONI PRC COVID 2023", col_types = c("numeric", 
+                                                                      "skip", "text", "skip", "text", 
+                                                                      "text", "text", "text", "date", 
+                                                                      "text", "date", "text", "skip", "text", 
+                                                                      "skip"))
+
+dt2024 <- read_excel("dati/11122024 Elenco Campioni PRC 2021_006.xlsx", 
+                     sheet = "CAMPIONI PRC COVID 2024", col_types = c("numeric", 
+                                                                      "skip", "skip", "text", "skip", "text", 
+                                                                      "text", "text", "text", "date", 
+                                                                      "text", "date", "text", "skip", "text", 
+                                                                      "skip"))
+
+
+dt2023 <- add_column(dt2023,Anno= 2023, .after="Materiale")
+dt2022 <- add_column(dt2022,Anno= 2022, .after="Materiale")
+dt2024 <- add_column(dt2024,Anno= 2024, .after="Materiale")
+dt2022 <- dt2022[-(3885:4005),]
+
+dati <- bind_rows(dt2022,dt2023,dt2024)
+
+dati <- clean_names(dati)
+#view(dati)
+
+
+unique(dati$specie)
+dati <- dati %>% 
+  mutate(specie = replace(specie, specie %in% "SCOTTAIOLO", "SCOIATTOLO"))
+
+# Riempire celle vuote con valore precedente
+
+
+dati <- dati %>% 
+  mutate(across(c("conf_orig","provenienza","sacco"), na.locf)) #più ordinato di versione precedente
+
+
+
+dati <- 
+  dati %>% mutate(sacco= ifelse(sacco =="T", 0, as.numeric(sacco)))
+
+dt_an <-   dati %>%
+  filter(!is.na(materiale)) %>% 
+  filter(!is.na(progr) | materiale =="POOL") %>% 
+  filter(!is.na(specie)) %>% 
+  filter(specie != "CINGHIALE") %>% 
+  filter(materiale != "MILZA") 
+
+
+unique(dt_an$materiale)
+
+
+dt_an <- dt_an %>% 
+  mutate(materiale = replace(materiale, materiale %in% "T. NAS", "T.NAS"),
+         materiale = replace(materiale, materiale %in% "T. RETT", "T.RETT"),
+         materiale = replace(materiale, materiale %in% c("ILEO/DIGIUNO", "DIGIUNO","DUODENO"), "INTESTINO"),
+         materiale = replace(materiale, materiale %in% "SENI NASALI", "T.NAS"),
+         materiale = replace(materiale, materiale %in% "T. FAR", "FARINGE"),
+         materiale = replace(materiale, materiale %in% "TR + PO", "TRACHEA + POLMONE"))
+
+
+dt_pancov <- dt_an %>%
+  mutate(pancov = replace_na(pancov, "NEG"),
+         esito = replace_na(esito, "Negativo"),
+         pancov = ifelse(pancov=="POS",1,0)) %>% 
+  pivot_wider(names_from = materiale, values_from = pancov, values_fill = 0) %>% 
+  select(-progr) %>% 
+  select(-sacco, -piastra_estrazione, -data_esito,-note) %>%
+  group_by(conf_orig, specie,provenienza, anno) %>% 
+  summarise(across(where(is.numeric), ~ sum(.x, na.rm = T))) %>% #collasso righe di stesso conferimento sommando i valori sulle colonne
+  ungroup() %>% 
+  rowwise() %>%
+  mutate(somma = sum(c_across(c(5:17))),
+         pos_pancov = ifelse(somma >=1, "POS", "NEG")) %>% 
+  select(-(5:17)) %>% select(- somma) %>% dplyr::rename(anno_reg = anno) %>% select(- provenienza) %>% 
+  separate(.,conf_orig,c("conferimento","n_campione"), sep = "/") %>% 
+  mutate(n_campione = na.fill(n_campione, (1))) %>% 
+  mutate(conferimento = as.numeric(conferimento))
+
+
+da_completo <- da4_sieri %>% left_join(dt_pancov, by = c("conferimento", "n_campione", "specie", "anno_reg"))
+
+view(da_completo)
+
+write.xlsx(da_completo, file = "./dati/dataset PRC completo.xlsx")
 # Mapping -----------------------------------------------------------------
+
+da_completo <- read.xlsx("./dati/dataset PRC completo.xlsx")
 
 #inizio col tentare di creare una mappa con tmap di tutti i campioni di cui ho la posizione
 
 library(tmap)
 library(sf)
 
+#da4 <- read.xlsx("./exports/coordinate conferimenti PRC2021006.xlsx")
 
 # 1. Carica confini delle province italiane
-# (usa un file .shp locale oppure recupera da ISTAT o GADM)
 province_italiane <- st_read("./dati/limits_IT_provinces.geojson")
 
 # 2. Filtra solo Emilia-Romagna
 province_er <- province_italiane %>%
   filter(reg_name == "Emilia-Romagna")
 
+#2. Alternativo
+prov_campionate <- province_italiane %>% 
+  filter(reg_name == "Emilia-Romagna" | prov_name == "Pavia")
+
 # 3. Crea sf con i tuoi dati
-campioni_sf <- da4 %>%
+campioni_sf <- da_completo %>%
   filter(!is.na(coord_x) & !is.na(coord_y)) %>%
   st_as_sf(coords = c("coord_y", "coord_x"), crs = 4326)  # lon, lat
 
@@ -642,16 +834,313 @@ campioni_sf <- campioni_sf %>%
     lon = sf::st_coordinates(.)[,1]
   )
 
-tm_shape(province_er) +
+map1_campionamenti <- tm_shape(prov_campionate) +
   tm_borders() +
   tm_shape(campioni_sf) +
   tm_dots(
     fill = "red",
     size = 0.08,
     popup.vars = c("Latitudine" = "lat", "Longitudine" = "lon", "ID" = c("conferimento","anno_reg", "specie" = "specie"))
-  )
+  )+
+  tm_title("Campionamenti totali")
 
 
 #già questa va molto bene per i campioni totali. Prossimo step: dovrei integrare i dati di positività in sierologia ed in PCR Pancov
 #per poter mappare i positivi. Inoltre, sui positivi, sarebbe bello discriminare graficamente le specie
 
+#mappa positivi sierologia
+
+campioni_pos_sieri_sf <- da_completo %>% filter(s_elisa == "POS") %>% 
+  filter(!is.na(coord_x) & !is.na(coord_y)) %>%
+  st_as_sf(coords = c("coord_y", "coord_x"), crs = 4326) %>%   # lon, lat
+  mutate(
+    lat = sf::st_coordinates(.)[,2],
+    lon = sf::st_coordinates(.)[,1]
+  )
+
+map2_elisa_pos <- tm_shape(prov_campionate) +
+  tm_borders() +
+  tm_shape(campioni_pos_sieri_sf) +
+  tm_squares(
+    fill = "specie",
+    size = 0.35,
+    popup.vars = c(
+      "Latitudine" = "lat",
+      "Longitudine" = "lon",
+      "Conferimento" = "conferimento",
+      "Anno" = "anno_reg",
+      "Specie" = "specie"
+    ),
+    fill.scale  = tm_scale_categorical(values = "seaborn.bright")
+  )+
+  tm_title("Positivi ELISA RBD")
+
+campioni_pos_pancov_sf <- da_completo %>% filter(pos_pancov == "POS") %>% 
+  filter(!is.na(coord_x) & !is.na(coord_y)) %>%
+  st_as_sf(coords = c("coord_y", "coord_x"), crs = 4326) %>%   # lon, lat
+  mutate(
+    lat = sf::st_coordinates(.)[,2],
+    lon = sf::st_coordinates(.)[,1])
+
+
+
+map3_pos_pancov <- tm_shape(province_er) +
+  tm_borders() +
+  tm_shape(campioni_pos_pancov_sf) +
+  tm_squares(
+    fill = "specie",
+    size = 0.35,
+    popup.vars = c(
+      "Latitudine" = "lat",
+      "Longitudine" = "lon",
+      "Conferimento" = "conferimento",
+      "Anno" = "anno_reg",
+      "Specie" = "specie"
+    ),
+    fill.scale  = tm_scale_categorical(values = "seaborn.bright")
+  )+
+  tm_title("Positivi Pancov")
+
+
+
+#provo a fare una mappa unica
+
+campioni_pos_pancov_sf <- campioni_pos_pancov_sf %>%
+  dplyr::mutate(specie_pancov = specie)
+
+campioni_pos_sieri_sf <- campioni_pos_sieri_sf %>%
+  dplyr::mutate(specie_siero = specie)
+
+# Palette condivisa per tutte le specie (personalizzabile)
+palette_specie <- c(
+  "CAPRIOLO" = "#1f77b4",
+  "VOLPE" = "#ff7f0e",
+  "LUPO" = "#2ca02c",
+  "RICCIO" = "#800080",
+  "LEPRE" = "#db7093",
+  "RATTO" = "#ee82ee",
+  "TASSO" = "red3",
+  "ISTRICE" = "#00ced1"
+)
+
+
+
+tm_shape(prov_campionate)+
+  tm_borders(group = "confini provinciali"
+             )+
+  
+  
+  tm_shape(campioni_pos_pancov_sf) +
+  tm_squares(
+    fill = "specie_pancov",
+    size = 0.35,
+    popup.vars = c(
+      "Latitudine" = "lat",
+      "Longitudine" = "lon",
+      "Conferimento" = "conferimento",
+      "Anno" = "anno_reg",
+      "Specie" = "specie"
+    ),
+    fill.scale  = tm_scale_categorical(values = palette_specie),
+    group = "Positivi Pancov",
+    )+
+  
+  tm_shape(campioni_pos_sieri_sf) +
+  tm_squares(
+    fill = "specie_siero",
+    size = 0.35,
+    popup.vars = c(
+      "Latitudine" = "lat",
+      "Longitudine" = "lon",
+      "Conferimento" = "conferimento",
+      "Anno" = "anno_reg",
+      "Specie" = "specie"
+    ),
+    fill.scale  = tm_scale_categorical(values = palette_specie),
+    group = "Positivi ELISA RBD",
+    options = opt_tm_squares()
+  )+
+  
+  
+  tm_shape(campioni_sf) +
+  tm_dots(
+    fill = "red",
+    size = 0.1,
+    popup.vars = c("Latitudine" = "lat", "Longitudine" = "lon", "ID" = c("conferimento","anno_reg", "specie" = "specie")),
+    group = "Campionamenti"
+  )+
+  tm_title("Campioni PRC 2021 006")
+
+#va ottimizzato, devo capire cosa fare comparire all'avvio....
+# risposta: pre che non si possa fare con tmap. Provo ad utilizzare leaflet
+
+library(leaflet)
+library(dplyr)
+library(sf)
+
+# Definisci una palette coerente per tutte le specie
+specie_livelli <- unique(c(
+  #campioni_sf$specie,
+  campioni_pos_sieri_sf$specie,
+  campioni_pos_pancov_sf$specie
+))
+
+pal <- colorFactor(
+  palette = palette_specie,
+  domain = names(palette_specie)
+)
+
+campioni_count_pancov <- campioni_pos_pancov_sf %>%
+  count(geometry, name = "n_punti")
+
+campioni_count_sieri <- campioni_pos_sieri_sf %>%
+  count(geometry, name = "n_punti")
+
+
+campioni_sf_pancov_enriched <- st_join(campioni_pos_pancov_sf, campioni_count_pancov, join = st_equals)
+
+campioni_sf_sieri_enriched <- st_join(campioni_pos_sieri_sf, campioni_count_sieri, join = st_equals)
+
+
+# Crea la mappa
+mappa_completa <- leaflet() %>%
+  # Aggiungi base map
+  addProviderTiles("CartoDB.Positron") %>%
+  
+  # Aggiungi confini provinciali
+  addPolygons(data = prov_campionate,
+              color = "black",
+              weight = 1,
+              fillOpacity = 0) %>%
+  
+  # Aggiungi Campionamenti totali
+  addCircleMarkers(
+    data = campioni_sf,
+    radius = 1.5,
+    color = "red",
+    stroke = FALSE,
+    fillOpacity = 0.7,
+    label = ~paste0("Specie: ", specie),
+    popup = ~paste("Conferimento:", conferimento, "<br>",
+                   "Anno:", anno_reg, "<br>",
+                   "Lat:", lat, "<br>",
+                   "Lon:", lon),
+    group = "Campionamenti"
+  ) %>%
+  
+  # Aggiungi Positivi ELISA
+  # addCircleMarkers(
+  #   data = campioni_pos_sieri_sf,
+  #   radius = 4,
+  #   color = ~pal(specie),
+  #   stroke = TRUE,
+  #   weight = 1,
+  #   fillOpacity = 1,
+  #   label = ~paste0("ELISA - Specie: ", specie),
+  #   popup = ~paste("Conferimento:", conferimento, "<br>",
+  #                  "Anno:", anno_reg, "<br>",
+  #                  "Lat:", lat, "<br>",
+  #                  "Lon:", lon),
+  #   group = "Positivi ELISA"
+  # ) %>%
+  
+addCircleMarkers(
+  data = campioni_sf_sieri_enriched,
+  radius = ~2 + (0.5*n_punti),  # Aumenta il raggio se ci sono più punti sovrapposti
+  color = ~pal(specie),
+  stroke = TRUE,
+  weight = 1,
+  fillOpacity = 0.8,
+  label = ~paste0("N campioni in questo punto: ", n_punti),
+  popup = ~paste("Conferimento:", conferimento, "<br>",
+                 "Anno:", anno_reg, "<br>",
+                 "Lat:", lat, "<br>",
+                 "Lon:", lon,"<br>",
+                 "Specie: ", specie),
+  group = "Positivi ELISA"
+) %>% 
+
+
+  # Aggiungi Positivi Pancov
+  
+  # addCircleMarkers(
+  #   data = campioni_pos_pancov_sf,
+  #   radius = 2,
+  #   color = ~pal(specie),
+  #   stroke = TRUE,
+  #   weight = 1,
+  #   fillOpacity = 1,
+  #   label = ~paste0("Pancov - Specie: ", specie),
+  #   popup = ~paste("Conferimento:", conferimento, "<br>",
+  #                  "Anno:", anno_reg, "<br>",
+  #                  "Lat:", lat, "<br>",
+  #                  "Lon:", lon),
+  #   group = "Positivi Pancov"
+  #   ) %>%
+
+addCircleMarkers(
+  data = campioni_sf_pancov_enriched,
+  radius = ~2 + (0.5*n_punti),  # Aumenta il raggio se ci sono più punti sovrapposti
+  color = ~pal(specie),
+  stroke = TRUE,
+  weight = 1,
+  fillOpacity = 0.8,
+  label = ~paste0("N campioni in questo punto: ", n_punti),
+  popup = ~paste("Conferimento:", conferimento, "<br>",
+                 "Anno:", anno_reg, "<br>",
+                 "Lat:", lat, "<br>",
+                 "Lon:", lon, "<br>",
+                 "Specie: ", specie),
+  group = "Positivi Pancov"
+) %>% 
+  
+  # Aggiungi legenda
+ # addLegend("bottomright", pal = pal, values = specie_livelli,
+  #          title = "Specie", opacity = 1) %>%
+  
+  # Legenda come layer separato
+  addLegend("bottomright", pal = pal, values = specie_livelli,
+            title = "Specie", opacity = 1,
+            group = "Legenda specie") %>%
+  
+  # Aggiungi controllo layer
+  addLayersControl(
+    overlayGroups = c("Campionamenti", "Positivi ELISA", "Positivi Pancov", "Legenda specie"),
+    options = layersControlOptions(collapsed = FALSE)
+  ) %>%
+  
+  # Disattiva visibilità iniziale di alcuni gruppi
+  hideGroup(c("Positivi ELISA", "Positivi Pancov"))
+
+mappa_completa
+
+
+#per risolvere problema di conferimenti che abbiano la stessa geolocalizzazione:
+
+#1. usare clusterOptions = markerClusterOptions(maxClusterRadius = 0.1) come argomento di addCircleMarkers,
+#ma secondo me raggruppa troppo. Opzione raggio a 0.1 per avere solo quelli in stesso punto clusterizzati
+
+# . mettere numero come etichetta e dimensione maggiore del marker
+
+
+# campioni_count <- campioni_pos_pancov_sf %>%
+#   count(geometry, name = "n_punti")
+# 
+# 
+# campioni_sf_enriched <- st_join(campioni_pos_pancov_sf, campioni_count, join = st_equals)
+
+# leaflet() %>%
+#   addProviderTiles("CartoDB.Positron") %>%
+  # addCircleMarkers(
+  #   data = campioni_sf_enriched,
+  #   radius = ~2 + (0.5*n_punti),  # Aumenta il raggio se ci sono più punti sovrapposti
+  #   color = ~pal(specie),
+  #   stroke = TRUE,
+  #   weight = 1,
+  #   fillOpacity = 0.8,
+  #   label = ~paste0("N campioni in questo punto: ", n_punti),
+  #   popup = ~paste("Conferimento:", conferimento, "<br>",
+  #                  "Anno:", anno_reg, "<br>",
+  #                  "Lat:", lat, "<br>",
+  #                  "Lon:", lon)
+  # )
