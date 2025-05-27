@@ -232,7 +232,8 @@ dati_aggiustati <- dati_aggiustati %>%
          coord_x_raw = replace(coord_x_raw, coord_x_raw %in% "X:44°57'24''", "X:43°57'24''"),
          coord_x_raw = replace(coord_x_raw, coord_x_raw %in% "X:44°08'32''", "X:44°04'59''"),
          coord_y_raw = replace(coord_y_raw, coord_y_raw %in% "Y12°29'01''", "Y12°17'24''"),
-         coord_y_raw = replace(coord_y_raw, coord_y_raw %in% "Y 11°24'46''", "11°54'46''"))
+         coord_y_raw = replace(coord_y_raw, coord_y_raw %in% "Y 11°24'46''", "11°54'46''"),
+         coord_x_raw = replace(coord_x_raw, coord_x_raw %in% "X 44°59'17''", "X 43°59'17''"))
                                  
 
 converti_coordinate_decimali <- function(df, col_x_raw = "coord_x_raw", col_y_raw = "coord_y_raw") {
@@ -812,17 +813,18 @@ prov_campionate <- province_italiane %>%
   filter(reg_name == "Emilia-Romagna" | prov_name == "Pavia")
 
 # 3. Crea sf con i tuoi dati
-campioni_sf <- da_completo %>%
+campioni_sf <- da_completo %>% filter(provincia != "Pavia" | is.na(provincia)) %>% 
   filter(!is.na(coord_x) & !is.na(coord_y)) %>%
   st_as_sf(coords = c("coord_y", "coord_x"), crs = 4326)  # lon, lat
 
 # 4. Mappa
-tmap_mode("view")  # o "plot" se vuoi per stampa
+tmap_mode("plot")  # o "plot" se vuoi per stampa
 
+tm_basemap("CartoDB.Positron")+
 tm_shape(province_er) +
-  tm_polygons(border.col = "gray60", alpha = 0.2) +
+  tm_polygons(col = "gray60", fill_alpha = 0.2) +
   tm_shape(campioni_sf) +
-  tm_dots(col = "red", size = 0.25, alpha = 0.6, title = "Campioni") +
+  tm_dots(fill = "red", size = 0.25, fill_alpha = 0.6, title = "Campioni") +
   tm_layout(title = "Campioni georeferenziati - Emilia-Romagna",
             legend.outside = TRUE)
 
@@ -850,7 +852,7 @@ map1_campionamenti <- tm_shape(prov_campionate) +
 
 #mappa positivi sierologia
 
-campioni_pos_sieri_sf <- da_completo %>% filter(s_elisa == "POS") %>% 
+campioni_pos_sieri_sf <- da_completo %>% filter(s_elisa == "POS") %>% filter(provincia != "Pavia" | is.na(provincia)) %>% 
   filter(!is.na(coord_x) & !is.na(coord_y)) %>%
   st_as_sf(coords = c("coord_y", "coord_x"), crs = 4326) %>%   # lon, lat
   mutate(
@@ -875,7 +877,7 @@ map2_elisa_pos <- tm_shape(prov_campionate) +
   )+
   tm_title("Positivi ELISA RBD")
 
-campioni_pos_pancov_sf <- da_completo %>% filter(pos_pancov == "POS") %>% 
+campioni_pos_pancov_sf <- da_completo %>% filter(pos_pancov == "POS") %>% filter(provincia != "Pavia" | is.na(provincia)) %>% 
   filter(!is.na(coord_x) & !is.na(coord_y)) %>%
   st_as_sf(coords = c("coord_y", "coord_x"), crs = 4326) %>%   # lon, lat
   mutate(
@@ -925,7 +927,7 @@ palette_specie <- c(
 
 
 
-tm_shape(prov_campionate)+
+tm_shape(province_er)+
   tm_borders(group = "confini provinciali"
              )+
   
@@ -1008,7 +1010,7 @@ mappa_completa <- leaflet() %>%
   addProviderTiles("CartoDB.Positron") %>%
   
   # Aggiungi confini provinciali
-  addPolygons(data = prov_campionate,
+  addPolygons(data = province_er,
               color = "black",
               weight = 1,
               fillOpacity = 0) %>%
