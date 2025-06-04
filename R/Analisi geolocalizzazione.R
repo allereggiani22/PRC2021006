@@ -655,6 +655,42 @@ sieri <- sieri %>% separate(.,conf_orig,c("conferimento","n_campione"), sep = "/
 da4 <- read.xlsx("./exports/coordinate conferimenti PRC2021006.xlsx")
 
 
+#mi sono sbagliato, non ho collassato i dati di matrici multiple in sieri_testati_n
+sieri_testati_n
+sieri %>% 
+  mutate(elisa = replace(elisa, elisa %in% c("INSUFF", "ASSENTE"), NA)) %>% 
+  filter(!is.na(elisa)) %>% 
+  filter(!specie %in% c("GATTO")) %>% #ho rimosso il filtro sulla specie cinghiale, perché uno è stato testato. sopra non funzionava e lo contava, quindi non tornavano i numeri
+  filter(!(conferimento == 32419 & elisa == "NEG")) %>% # il conferimento 32419 risultava 1 volta pos ed 1 neg su 2 campioni di siero. 
+  #distinct() teneva solo il negativo, per cui l'ho rimosso. devo trovare alternativa per il futuro.
+  filter(!(conferimento == 32422 & s_elisa == "NEG")) %>% # il conferimento 32422 è stato fatto in due aliquote, 
+  #di cui solo una positiva per s_elisa
+  mutate(
+    elisa = ifelse(elisa == "POS", 1, 0),
+    s_elisa = ifelse(s_elisa == "POS", 1, 0),
+    materiale = ifelse(materiale %in% c("UMOR VITREO", "UMOR"), "UMOR ACQUEO", materiale),
+    materiale = ifelse(materiale %in% c("UMOR ACQUEO", "MUSCOLO"), materiale, "SIERO")
+  ) %>% 
+  distinct(conferimento, .keep_all = TRUE) %>%
+  pivot_wider(names_from = materiale, values_from = elisa, values_fill = 0) %>%
+  select(-percent_pos) %>%
+  group_by(conferimento, specie) %>% 
+  summarise(across(where(is.numeric), ~ sum(.x, na.rm = TRUE)), .groups = "drop") %>%
+  rowwise() %>% 
+  mutate(
+    elisa = ifelse(sum(c_across(c(4:5))) >= 1, "Pos", "Neg"),
+    s_elisa = ifelse(s_elisa == 1, "Pos", "Neg")
+  ) %>%
+  select(-SIERO, -`UMOR ACQUEO`) %>%
+  relocate(elisa, .before = s_elisa) %>%
+  group_by(specie) %>% 
+  summarise(
+    Totale = n(),
+    elisa = sum(elisa == "Pos"),
+    s_elisa = sum(s_elisa == "Pos"),
+    .groups = "drop"
+  ) %>% arrange(desc(elisa)) %>% janitor::adorn_totals() %>%  view() #non tornano i numeri... bisogna ragionare con più calma
+
 sieri_n_pos <- sieri %>% filter(elisa == "POS") %>%
   filter(!(conferimento == 32422 & s_elisa == "NEG")) %>% 
     filter(specie != "GATTO")
@@ -691,7 +727,7 @@ view(da4_sieri)
 
 #ora posso integrare i dati di positività sierologica
 
-da4_sieri <- da4_sieri %>% left_join(sieri_n_pos, by = c("conferimento", "n_campione", "specie", "anno_reg"))
+da4_sieri <- da4_sieri %>% left_join(sieri_testati_n, by = c("conferimento", "n_campione", "specie", "anno_reg"))
 
 
 # integrazione dati Pancov ------------------------------------------------
@@ -785,7 +821,7 @@ dt_pancov <- dt_an %>%
   mutate(conferimento = as.numeric(conferimento))
 
 
-da_completo <- da4_sieri %>% left_join(dt_pancov, by = c("conferimento", "n_campione", "specie", "anno_reg"))
+da_completo_2 <- da4_sieri %>% left_join(dt_pancov, by = c("conferimento", "n_campione", "specie", "anno_reg"))
 
 view(da_completo)
 
@@ -793,6 +829,45 @@ write.xlsx(da_completo, file = "./dati/dataset PRC completo.xlsx")
 # Mapping -----------------------------------------------------------------
 
 da_completo <- read.xlsx("./dati/dataset PRC completo.xlsx")
+
+da_completo <- da_completo %>%
+  mutate(
+    specie = recode(specie,
+                    "CAPRIOLO" = "ROE DEER",
+                    "DAINO" = "FALLOW DEER",
+                    "TASSO" = "BADGER",
+                    "ISTRICE" = "PORCUPINE",
+                    "LEPRE" = "HARE",
+                    "RICCIO" = "HEDGEHOG",
+                    "SCOIATTOLO" = "SQUIRREL",
+                    "LUPO" = "WOLF",
+                    "CERVO" = "DEER",
+                    "FAINA" = "BEECH MARTEN",
+                    "DELFINO" = "TURSIOPS",
+                    "VOLPE" = "RED FOX",
+                    "SILVILAGO" = "MARSH RABBIT",
+                    "PUZZOLA" = "SKUNK",
+                    "CANGURO" = "WALLABY",
+                    "CONIGLIO" = "RABBIT",
+                    "LONTRA" = "OTTER",
+                    "SURICATO" = "MEERKAT",
+                    "AGUTI DI AZARA" = "AZARA'S AGOUTI",
+                    "RATTO" = "RAT",
+                    "TOPO" = "MOUSE",
+                    "GHIRO" = "DORMOUSE",
+                    "PROCIONE" = "RACCOON",
+                    "MARTORA" = "PINE MARTEN",
+                    "FURETTO" = "FERRET",
+                    "DONNOLA" = "WEASEL",
+                    "TALPA" = "MOLE",
+                    "SCIACALLO" = "JACKAL",
+                    "CINCILLA'" = "CHINCHILLA",
+                    "PIPISTRELLO" = "BAT",
+                    "TURSIOPE" = "TURSIOPS",
+                    "GATTO SELVATICO" = "EUROPEAN WILDCAT"
+    )
+  )
+
 
 #inizio col tentare di creare una mappa con tmap di tutti i campioni di cui ho la posizione
 
@@ -817,18 +892,7 @@ campioni_sf <- da_completo %>% filter(provincia != "Pavia" | is.na(provincia)) %
   filter(!is.na(coord_x) & !is.na(coord_y)) %>%
   st_as_sf(coords = c("coord_y", "coord_x"), crs = 4326)  # lon, lat
 
-# 4. Mappa
-tmap_mode("plot")  # o "plot" se vuoi per stampa
-
-tm_basemap("CartoDB.Positron")+
-tm_shape(province_er) +
-  tm_polygons(col = "gray60", fill_alpha = 0.2) +
-  tm_shape(campioni_sf) +
-  tm_dots(fill = "red", size = 0.25, fill_alpha = 0.6, title = "Campioni") +
-  tm_layout(title = "Campioni georeferenziati - Emilia-Romagna",
-            legend.outside = TRUE)
-
-#versione più interattiva
+#versione più interattiva - (va bene anche per view mode)
 
 campioni_sf <- campioni_sf %>%
   mutate(
@@ -836,15 +900,37 @@ campioni_sf <- campioni_sf %>%
     lon = sf::st_coordinates(.)[,1]
   )
 
-map1_campionamenti <- tm_shape(prov_campionate) +
-  tm_borders() +
+# 4. Mappa
+
+
+# Mappe statiche per pubblicazione ----------------------------------------
+
+
+
+tmap_mode("plot")  # o "plot" se vuoi per stampa
+
+
+map1_campionamenti <- tm_shape(province_er) +
+  tm_polygons(col = "gray60", fill_alpha = 0.2) +
   tm_shape(campioni_sf) +
-  tm_dots(
-    fill = "red",
-    size = 0.08,
-    popup.vars = c("Latitudine" = "lat", "Longitudine" = "lon", "ID" = c("conferimento","anno_reg", "specie" = "specie"))
-  )+
-  tm_title("Campionamenti totali")
+  tm_dots(fill = "red", size = 0.1, fill_alpha = 0.6, title = "Campioni") +
+  tm_layout(frame = F)
+
+tmap_save(map1_campionamenti, "./exports/Total sampling map.png", dpi = 600)
+
+#versione per tmap - view mode
+
+# tmap_mode("view")
+# 
+# map1_campionamenti <- tm_shape(province_er) +
+#   tm_borders() +
+#   tm_shape(campioni_sf) +
+#   tm_dots(
+#     fill = "red",
+#     size = 0.08,
+#     popup.vars = c("Latitudine" = "lat", "Longitudine" = "lon", "ID" = c("conferimento","anno_reg", "specie" = "specie"))
+#   )+
+#   tm_title("Campionamenti totali")
 
 
 #già questa va molto bene per i campioni totali. Prossimo step: dovrei integrare i dati di positività in sierologia ed in PCR Pancov
@@ -860,22 +946,33 @@ campioni_pos_sieri_sf <- da_completo %>% filter(s_elisa == "POS") %>% filter(pro
     lon = sf::st_coordinates(.)[,1]
   )
 
-map2_elisa_pos <- tm_shape(prov_campionate) +
-  tm_borders() +
-  tm_shape(campioni_pos_sieri_sf) +
-  tm_squares(
-    fill = "specie",
-    size = 0.35,
-    popup.vars = c(
-      "Latitudine" = "lat",
-      "Longitudine" = "lon",
-      "Conferimento" = "conferimento",
-      "Anno" = "anno_reg",
-      "Specie" = "specie"
-    ),
-    fill.scale  = tm_scale_categorical(values = "seaborn.bright")
-  )+
-  tm_title("Positivi ELISA RBD")
+palette_specie <- c(
+  "ROE DEER" = "#1f77b4",
+  "RED FOX" = "#ff7f0e",
+  "WOLF" = "#2ca02c",
+  "HEDGEHOG" = "#800080",
+  "HARE" = "#db7093",
+  "RAT" = "#ee82ee",
+  "BADGER" = "red3",
+  "PORCUPINE" = "#00ced1"
+)
+
+# map2_elisa_pos <- tm_shape(province_er) +
+#   tm_polygons(col = "gray60", fill_alpha = 0.2) +
+#   tm_shape(campioni_pos_sieri_sf) +
+#   tm_squares(
+#     fill = "specie",
+#     size = 0.35,
+#     popup.vars = c(
+#       "Latitudine" = "lat",
+#       "Longitudine" = "lon",
+#       "Conferimento" = "conferimento",
+#       "Anno" = "anno_reg",
+#       "Specie" = "specie"
+#     ),
+#     fill.scale  = tm_scale_categorical(values = palette_specie)
+#   )+
+#   tm_title("Positivi ELISA RBD")
 
 campioni_pos_pancov_sf <- da_completo %>% filter(pos_pancov == "POS") %>% filter(provincia != "Pavia" | is.na(provincia)) %>% 
   filter(!is.na(coord_x) & !is.na(coord_y)) %>%
@@ -886,12 +983,29 @@ campioni_pos_pancov_sf <- da_completo %>% filter(pos_pancov == "POS") %>% filter
 
 
 
-map3_pos_pancov <- tm_shape(province_er) +
-  tm_borders() +
-  tm_shape(campioni_pos_pancov_sf) +
+# map3_pos_pancov <- tm_shape(province_er) +
+#   tm_polygons(col = "gray60", fill_alpha = 0.2) +
+#   tm_shape(campioni_pos_pancov_sf) +
+#   tm_dots(
+#     fill = "specie",
+#     size = 0.35,
+#     popup.vars = c(
+#       "Latitudine" = "lat",
+#       "Longitudine" = "lon",
+#       "Conferimento" = "conferimento",
+#       "Anno" = "anno_reg",
+#       "Specie" = "specie"
+#     ),
+#     fill.scale  = tm_scale_categorical(values = palette_specie)
+#   )+
+#   tm_title("Positivi Pancov")
+
+map4_pos_totali <- tm_shape(province_er) +
+  tm_polygons(col = "gray60", fill_alpha = 0.2) +
+  tm_shape(campioni_pos_sieri_sf) +
   tm_squares(
     fill = "specie",
-    size = 0.35,
+    size = 0.4,
     popup.vars = c(
       "Latitudine" = "lat",
       "Longitudine" = "lon",
@@ -899,9 +1013,29 @@ map3_pos_pancov <- tm_shape(province_er) +
       "Anno" = "anno_reg",
       "Specie" = "specie"
     ),
-    fill.scale  = tm_scale_categorical(values = "seaborn.bright")
+    fill.scale  = tm_scale_categorical(values = palette_specie),
+    fill.legend = tm_legend("ELISA positive")
   )+
-  tm_title("Positivi Pancov")
+  
+  tm_shape(campioni_pos_pancov_sf) +
+  tm_dots(
+    fill = "specie",
+    size = 0.4,
+    popup.vars = c(
+      "Latitudine" = "lat",
+      "Longitudine" = "lon",
+      "Conferimento" = "conferimento",
+      "Anno" = "anno_reg",
+      "Specie" = "specie"
+    ),
+    fill.scale  = tm_scale_categorical(values = palette_specie),
+    fill.legend = tm_legend("PanCoV positive")
+  )+
+  tm_layout(frame = F)
+
+tmap_save(map4_pos_totali, "./exports/Total positive map.png", dpi = 600)
+
+# Mappe interattive per prova/web -----------------------------------------
 
 
 
@@ -1146,3 +1280,63 @@ mappa_completa
   #                  "Lat:", lat, "<br>",
   #                  "Lon:", lon)
   # )
+
+
+# Analisi numeriche sul dataset completo ----------------------------------
+
+da_completo <- read.xlsx("./dati/dataset PRC completo.xlsx")
+
+da_completo <- da_completo %>%
+  mutate(
+    specie = recode(specie,
+                    "CAPRIOLO" = "ROE DEER",
+                    "DAINO" = "FALLOW DEER",
+                    "TASSO" = "BADGER",
+                    "ISTRICE" = "PORCUPINE",
+                    "LEPRE" = "HARE",
+                    "RICCIO" = "HEDGEHOG",
+                    "SCOIATTOLO" = "SQUIRREL",
+                    "LUPO" = "WOLF",
+                    "CERVO" = "DEER",
+                    "FAINA" = "BEECH MARTEN",
+                    "DELFINO" = "TURSIOPS",
+                    "VOLPE" = "RED FOX",
+                    "SILVILAGO" = "MARSH RABBIT",
+                    "PUZZOLA" = "SKUNK",
+                    "CANGURO" = "WALLABY",
+                    "CONIGLIO" = "RABBIT",
+                    "LONTRA" = "OTTER",
+                    "SURICATO" = "MEERKAT",
+                    "AGUTI DI AZARA" = "AZARA'S AGOUTI",
+                    "RATTO" = "RAT",
+                    "TOPO" = "MOUSE",
+                    "GHIRO" = "DORMOUSE",
+                    "PROCIONE" = "RACCOON",
+                    "MARTORA" = "PINE MARTEN",
+                    "FURETTO" = "FERRET",
+                    "DONNOLA" = "WEASEL",
+                    "TALPA" = "MOLE",
+                    "SCIACALLO" = "JACKAL",
+                    "CINCILLA'" = "CHINCHILLA",
+                    "PIPISTRELLO" = "BAT",
+                    "TURSIOPE" = "TURSIOPS",
+                    "GATTO SELVATICO" = "EUROPEAN WILDCAT"
+    )
+  )
+
+#voglio arrivare a fare un summary di quanti animali positivi a pancov per specie
+
+da_completo %>% group_by(specie) %>% 
+  summarise(N_individui = n(), POS = sum(pos_pancov == "POS", na.rm = T), NEG= sum(pos_pancov == "NEG", na.rm = T)) %>% 
+  arrange(desc(N_individui)) %>% janitor::adorn_totals() #include i 12 animali di cui non fatta analisi pancov
+
+#summary positivi sierologia per specie
+
+da_completo %>% group_by(specie) %>% filter(! is.na(elisa)) %>% 
+  summarise(
+    Totale = n(),
+    elisa = sum(elisa == "POS", na.rm = T),
+    s_elisa = sum(s_elisa == "POS", na.rm = T),
+    .groups = "drop") %>%
+  arrange(desc(elisa)) %>% janitor::adorn_totals() %>% view()
+    
