@@ -656,9 +656,12 @@ da4 <- read.xlsx("./exports/coordinate conferimenti PRC2021006.xlsx")
 
 
 #mi sono sbagliato, non ho collassato i dati di matrici multiple in sieri_testati_n
-sieri_testati_n
-sieri %>% 
-  mutate(elisa = replace(elisa, elisa %in% c("INSUFF", "ASSENTE"), NA)) %>% 
+#sieri_testati_n
+
+
+sieri_clean <- sieri %>% 
+  mutate(elisa = replace(elisa, elisa %in% c("INSUFF", "ASSENTE"), NA),
+         specie = recode (specie, "SCOTTAIOLO" = "SCOIATTOLO")) %>% 
   filter(!is.na(elisa)) %>% 
   filter(!specie %in% c("GATTO")) %>% #ho rimosso il filtro sulla specie cinghiale, perché uno è stato testato. sopra non funzionava e lo contava, quindi non tornavano i numeri
   filter(!(conferimento == 32419 & elisa == "NEG")) %>% # il conferimento 32419 risultava 1 volta pos ed 1 neg su 2 campioni di siero. 
@@ -667,33 +670,93 @@ sieri %>%
   #di cui solo una positiva per s_elisa
   mutate(
     elisa = ifelse(elisa == "POS", 1, 0),
-    s_elisa = ifelse(s_elisa == "POS", 1, 0),
+    s_elisa = ifelse(s_elisa == "POS", 1, ifelse(s_elisa == "NEG", 0, NA)),
     materiale = ifelse(materiale %in% c("UMOR VITREO", "UMOR"), "UMOR ACQUEO", materiale),
-    materiale = ifelse(materiale %in% c("UMOR ACQUEO", "MUSCOLO"), materiale, "SIERO")
+    materiale = ifelse(materiale %in% c("UMOR ACQUEO", "MUSCOLO"), materiale, "SIERO"),
+    specie = recode(specie,
+                    "CAPRIOLO" = "ROE DEER",
+                    "DAINO" = "FALLOW DEER",
+                    "TASSO" = "BADGER",
+                    "ISTRICE" = "PORCUPINE",
+                    "LEPRE" = "HARE",
+                    "RICCIO" = "HEDGEHOG",
+                    "SCOIATTOLO" = "SQUIRREL",
+                    "LUPO" = "WOLF",
+                    "CERVO" = "DEER",
+                    "FAINA" = "BEECH MARTEN",
+                    "DELFINO" = "TURSIOPS",
+                    "VOLPE" = "RED FOX",
+                    "SILVILAGO" = "MARSH RABBIT",
+                    "PUZZOLA" = "SKUNK",
+                    "CONIGLIO" = "RABBIT",
+                    "LONTRA" = "OTTER",
+                    "SURICATO" = "MEERKAT",
+                    "AGUTI DI AZARA" = "AZARA'S AGOUTI",
+                    "RATTO" = "RAT",
+                    "TOPO" = "MOUSE",
+                    "GHIRO" = "DORMOUSE",
+                    "GATTO SELVATICO" = "EUROPEAN WILDCAT",
+                    "CANGURO" = "WALLABY",
+                    "CINGHIALE" = "WILD BOAR",
+                    "MARTORA" = "PINE MARTEN",
+                    "SCIACALLO" = "JACKAL",
+                    "FURETTO" = "FERRET"
+                    )
+  ) 
+
+
+ #fino qui funziona tutto 
+  #distinct(conferimento, .keep_all = TRUE) %>% QUESTO COMANDO MI ROVINA TUTTO SE PRIMA NON FACCIO IL PIVOT
+
+
+  # group_by(specie) %>% 
+  # summarise(
+  #   Totale = n(),
+  #   elisa = sum(elisa == "Pos"),
+  #   s_elisa = sum(s_elisa == "Pos"),
+  #   .groups = "drop"
+  # ) %>% arrange(desc(elisa)) %>% janitor::adorn_totals() %>%  view() #non tornano i numeri... bisogna ragionare con più calma
+
+# sieri_n_pos <- sieri %>% filter(elisa == "POS") %>%
+#   filter(!(conferimento == 32422 & s_elisa == "NEG")) %>% 
+#     filter(specie != "GATTO")
+
+
+# Aggiunta successiva per verifica su dataset completo --------------------
+
+
+#ATTENZIONE: CON IL FILTRO SUI POSITIVI FATTO QUI SOPRA, NON IMPORTO I DATI DI QUALI SONO NEGATIVI, NON POTENDO POI DISCRIMINARE QUELLI NON TESTATI... SISTEMO SOTTO
+
+metadata <- sieri_clean %>%
+  select(conferimento, n_campione, specie, anno_reg, provenienza, note, percent_pos) %>%
+  distinct(conferimento, n_campione, .keep_all = TRUE)
+
+pivot_data <- sieri_clean %>% group_by(conferimento, n_campione, materiale) %>%
+  summarise(
+    elisa = sum(elisa),
+    s_elisa = sum(s_elisa, na.rm = TRUE),
+    .groups = "drop"
   ) %>% 
-  distinct(conferimento, .keep_all = TRUE) %>%
-  pivot_wider(names_from = materiale, values_from = elisa, values_fill = 0) %>%
+  pivot_wider(names_from = materiale, values_from = c(elisa,s_elisa), values_fill = 0)
+
+sieri_clean <- left_join(metadata, pivot_data, by= c("conferimento", "n_campione"))
+
+view(sieri_clean)
+
+sieri_clean <- sieri_clean %>% 
   select(-percent_pos) %>%
-  group_by(conferimento, specie) %>% 
-  summarise(across(where(is.numeric), ~ sum(.x, na.rm = TRUE)), .groups = "drop") %>%
+  group_by(conferimento, n_campione, specie) %>% 
+  summarise(across(where(is.numeric), ~ sum(.x, na.rm = TRUE)), .groups = "drop") %>% 
   rowwise() %>% 
   mutate(
-    elisa = ifelse(sum(c_across(c(4:5))) >= 1, "Pos", "Neg"),
-    s_elisa = ifelse(s_elisa == 1, "Pos", "Neg")
-  ) %>%
-  select(-SIERO, -`UMOR ACQUEO`) %>%
-  relocate(elisa, .before = s_elisa) %>%
-  group_by(specie) %>% 
-  summarise(
-    Totale = n(),
-    elisa = sum(elisa == "Pos"),
-    s_elisa = sum(s_elisa == "Pos"),
-    .groups = "drop"
-  ) %>% arrange(desc(elisa)) %>% janitor::adorn_totals() %>%  view() #non tornano i numeri... bisogna ragionare con più calma
+    elisa = ifelse(sum(c_across(c(5:7))) >= 1, "Pos", "Neg"),
+    s_elisa = ifelse(sum(c_across(c(8:10))) >= 1, "Pos", "Neg")
+  ) %>% 
+  select(-elisa_SIERO, -`elisa_UMOR ACQUEO`, -elisa_MUSCOLO, -s_elisa_SIERO, -`s_elisa_UMOR ACQUEO`, -s_elisa_MUSCOLO ) %>%
+  relocate(elisa, .before = s_elisa)
 
-sieri_n_pos <- sieri %>% filter(elisa == "POS") %>%
-  filter(!(conferimento == 32422 & s_elisa == "NEG")) %>% 
-    filter(specie != "GATTO")
+
+#### fine aggiunta ###
 
 #cerco di capire perché alcune righe dai sieri pos non ci sono in da4
 
@@ -725,10 +788,297 @@ view(da4_sieri)
 da4_sieri <- geotagga_completo_con_cache(da4_sieri)
 view(da4_sieri)
 
-#ora posso integrare i dati di positività sierologica
+#ora posso integrare i dati di positività sierologica 
 
-da4_sieri <- da4_sieri %>% left_join(sieri_testati_n, by = c("conferimento", "n_campione", "specie", "anno_reg"))
+#da4_sieri ha le specie in italiano, gli do il recode prima
 
+da4_sieri <- da4_sieri %>% mutate(specie = recode (specie,
+                                       "CAPRIOLO" = "ROE DEER",
+                                       "DAINO" = "FALLOW DEER",
+                                       "TASSO" = "BADGER",
+                                       "ISTRICE" = "PORCUPINE",
+                                       "LEPRE" = "HARE",
+                                       "RICCIO" = "HEDGEHOG",
+                                       "SCOIATTOLO" = "SQUIRREL",
+                                       "LUPO" = "WOLF",
+                                       "CERVO" = "DEER",
+                                       "FAINA" = "BEECH MARTEN",
+                                       "DELFINO" = "TURSIOPS",
+                                       "VOLPE" = "RED FOX",
+                                       "SILVILAGO" = "MARSH RABBIT",
+                                       "PUZZOLA" = "SKUNK",
+                                       "CONIGLIO" = "RABBIT",
+                                       "LONTRA" = "OTTER",
+                                       "SURICATO" = "MEERKAT",
+                                       "AGUTI DI AZARA" = "AZARA'S AGOUTI",
+                                       "RATTO" = "RAT",
+                                       "TOPO" = "MOUSE",
+                                       "GHIRO" = "DORMOUSE",
+                                       "GATTO SELVATICO" = "EUROPEAN WILDCAT",
+                                       "CANGURO" = "WALLABY",
+                                       "CINGHIALE" = "WILD BOAR",
+                                       "MARTORA" = "PINE MARTEN",
+                                       "SCIACALLO" = "JACKAL",
+                                       "FURETTO" = "FERRET",
+                                       "DONNOLA" = "WEASEL",
+                                       "PIPISTRELLO" = "BAT",
+                                       "PROCIONE" = "RACCOON",
+                                       "TALPA" = "MOLE",
+                                       "CINCILLA'" = "CHINCHILLA"
+))
+
+#devo risolvere degli intoppi --> il problema è che ci sono 1450 campioni di siero analizzati non presenti nel dataset scaricato da bobj
+
+conf_test_mancanti <- anti_join(sieri_clean, da4_sieri, by = c("conferimento", "n_campione", "specie", "anno_reg"))
+
+anti_join(sieri_clean, da4_sieri, by = c("conferimento", "n_campione", "specie", "anno_reg")) %>%
+  distinct(specie) %>% arrange(specie)
+
+
+#forzo l'inserzione delle righe in più? no sistemo poi aggiusto
+
+
+
+#visto che ci sono 450 campioni in più, devo integrarli nel dataset. aggiungo sotto una sezione per farlo
+
+
+
+# Estrazione dati per conferimenti solo siero -----------------------------
+
+selvatici  <- read_excel("dati/Selvatici ER filone.xlsx", 
+                            col_types = c("skip", "skip", "numeric", 
+                                                   "date", "numeric", "numeric", "text", 
+                                                   "text", "text", "text", "text", "text", 
+                                                   "text", "text"))
+
+
+selvatici <- clean_names(selvatici)
+
+view(selvatici)
+
+view(conf_test_mancanti)
+
+interessanti <- selvatici %>% filter(conferimento %in% conf_test_mancanti$conferimento) %>% distinct()
+
+unique(interessanti$specie)
+
+interessanti <- interessanti %>% filter(! specie %in% c("MERLO","RONDONE","GHIANDAIA","TORTORA","FRINGUELLO COMUNE","UPUPA", "PICCHIO VERDE", "CORNACCHIA GRIGIA"))
+
+info_estratte <- estrai_info_note(interessanti)
+
+view(info_estratte)
+
+info_estratte %>% write.xlsx(., file = "./dati/conf mancanti info estratte.xlsx")
+
+mancanti_corretti <- read_excel("./dati/mancanti_corretti.xlsx")
+
+mancanti_corretti <- converti_coordinate_decimali(mancanti_corretti)
+
+mancanti_corretti <- geotagga_completo_con_cache(mancanti_corretti)
+
+view(mancanti_corretti)
+mancanti_corretti %>% filter(is.na(coord_x)) %>% view()
+view(conf_test_mancanti)
+
+#capiamo cosa ancora non torna
+da_integrare <- anti_join(conf_test_mancanti, mancanti_corretti, by=("conferimento")) %>% 
+  mutate(conferimento = case_when(
+    conferimento == 61453 ~ 61435,
+    conferimento == 74663 ~ 74633,
+    conferimento == 88429 ~ 88249,
+    conferimento == 164532 ~ 164632,
+    conferimento == 169329 ~ 179329,
+    conferimento == 264957 ~ 261957,
+    conferimento == 279623 ~ 279263,
+    TRUE ~ conferimento),
+    specie = case_when(
+      conferimento == 74633 ~ "RED FOX",
+      TRUE ~ specie)) %>% filter(! specie %in% c("WOLF", "WILD BOAR"))
+
+view(da_integrare)
+
+
+
+#correggo quelli che erano scritti male
+conf_test_mancanti_2 <- conf_test_mancanti %>% 
+ mutate(conferimento = case_when(
+   conferimento == 61453 ~ 61435,
+   conferimento == 74663 ~ 74633,
+   conferimento == 88429 ~ 88249,
+   conferimento == 164532 ~ 164632,
+   conferimento == 169329 ~ 179329,
+   conferimento == 264957 ~ 261957,
+   conferimento == 279623 ~ 279263,
+   TRUE ~ conferimento),
+        specie = case_when(
+          conferimento == 74633 ~ "RED FOX",
+          TRUE ~ specie))
+
+view(conf_test_mancanti_2)
+
+da_integrare_dati <-
+  selvatici %>% filter(conferimento %in% da_integrare$conferimento) %>% distinct()
+
+da_integrare_dati <- estrai_info_note(da_integrare_dati)
+
+view(da_integrare_dati)
+
+da_integrare_dati <- da_integrare_dati %>% 
+  mutate(coord_x_raw = case_when(
+    conferimento == 74633 ~ "44°21'08''",
+    TRUE ~ coord_x_raw),
+    indirizzo_prelievo = case_when(
+      indirizzo_prelievo == "LOC. DUE BANDIERE" ~ "due bandiere",
+      TRUE ~ indirizzo_prelievo))
+
+da_integrare_dati <- converti_coordinate_decimali(da_integrare_dati)
+
+da_integrare_dati <- geotagga_completo_con_cache(da_integrare_dati)
+ 
+mancanti_corretti2 <- bind_rows(mancanti_corretti, da_integrare_dati)
+
+mancanti_corretti2 <- 
+  mancanti_corretti2 %>% filter(conferimento != 189572) %>% filter (!(conferimento == 262264 & specie == "PIPISTRELLO DI SAVI"))
+
+view(mancanti_corretti2)
+
+rimanenti <- anti_join(conf_test_mancanti_2, mancanti_corretti2, by=("conferimento")) %>% view()
+#restano fuori solo i lupi della lombradia, un cinghiale ed un furetto
+
+view(da4_sieri)
+
+integrati <- conf_test_mancanti_2 %>% group_by(conferimento, n_campione, anno_reg) %>% summarise() %>% 
+  left_join(mancanti_corretti2, by= c("conferimento", "anno_reg")) %>% view()
+
+anti_join(integrati, conf_test_mancanti_2)
+
+da_correggere <- conf_test_mancanti_2 %>%
+  group_by(conferimento, n_campione, anno_reg) %>%
+  summarise(.groups = "drop") %>%
+  left_join(mancanti_corretti2, by = "conferimento") %>%
+  filter(!is.na(anno_reg.x), !is.na(anno_reg.y), anno_reg.x != anno_reg.y) %>%
+  select(conferimento, n_campione)
+
+conf_test_mancanti_2 <-  conf_test_mancanti_2 %>%
+  left_join(da_correggere %>% mutate(da_correggere = TRUE),
+            by = c("conferimento", "n_campione")) %>%
+  mutate(anno_reg = case_when(
+    da_correggere == TRUE & anno_reg == 2023 ~ 2022,
+    TRUE ~ anno_reg
+  )) %>%
+  select(-da_correggere)
+
+#ridò il comando di prima ora
+
+integrati <- conf_test_mancanti_2 %>% group_by(conferimento, n_campione, anno_reg) %>% summarise() %>% 
+  left_join(mancanti_corretti2, by= c("conferimento", "anno_reg")) %>% select(- n_campioni) %>%  view()
+
+integrati <-  integrati %>% filter(! is.na(data_reg))
+view(integrati)
+
+#ora devo aggiungere integrati a da4_sieri, per poi unire le colonne degli elisa
+
+cols_comuni <- intersect(names(da4_sieri), names(integrati))
+
+integrati_al <- integrati %>% 
+  mutate(provincia = recode(provincia,   
+                                        "BO" = "Bologna",
+                                        "FE" = "Ferrara",
+                                        "FC" = "Forlì-Cesena",
+                                        "MO" = "Modena",
+                                        "PR" = "Parma",
+                                        "PC" = "Piacenza",
+                                        "RA" = "Ravenna",
+                                        "RE" = "Reggio Emilia",
+                                        "RN" = "Rimini"),
+         specie = recode (specie,
+                                 "CAPRIOLO" = "ROE DEER",
+                                 "DAINO" = "FALLOW DEER",
+                                 "TASSO" = "BADGER",
+                                 "ISTRICE" = "PORCUPINE",
+                                 "LEPRE" = "HARE",
+                                 "RICCIO" = "HEDGEHOG",
+                                 "SCOIATTOLO" = "SQUIRREL",
+                                 "LUPO" = "WOLF",
+                                 "CERVO" = "DEER",
+                                 "FAINA" = "BEECH MARTEN",
+                                 "DELFINO" = "TURSIOPS",
+                                 "VOLPE" = "RED FOX",
+                                 "SILVILAGO" = "MARSH RABBIT",
+                                 "PUZZOLA" = "SKUNK",
+                                 "CONIGLIO" = "RABBIT",
+                                 "LONTRA" = "OTTER",
+                                 "SURICATO" = "MEERKAT",
+                                 "AGUTI DI AZARA" = "AZARA'S AGOUTI",
+                                 "RATTO" = "RAT",
+                                 "TOPO" = "MOUSE",
+                                 "GHIRO" = "DORMOUSE",
+                                 "GATTO SELVATICO" = "EUROPEAN WILDCAT",
+                                 "CANGURO" = "WALLABY",
+                                 "CINGHIALE" = "WILD BOAR",
+                                 "MARTORA" = "PINE MARTEN",
+                                 "SCIACALLO" = "JACKAL",
+                                 "FURETTO" = "FERRET",
+                                 "DONNOLA" = "WEASEL",
+                                 "PIPISTRELLO" = "BAT",
+                                 "PROCIONE" = "RACCOON",
+                                 "TALPA" = "MOLE",
+                                 "CINCILLA'" = "CHINCHILLA")) %>% 
+  select(all_of(cols_comuni))
+
+da4_sieri <- bind_rows(da4_sieri, integrati_al)
+
+#prima di integrare dati sieri, devo correggere l'anno delle lepri
+
+sieri_clean <- sieri_clean %>%  mutate(anno_reg = case_when(
+  conferimento %in% da_correggere$conferimento & anno_reg == 2023 ~ 2022,
+  TRUE ~ anno_reg))
+
+sieri_clean <- sieri_clean %>% anti_join(rimanenti, by = c("conferimento", "n_campione", "anno_reg"))
+sieri_clean <- sieri_clean %>%  mutate(conferimento = case_when(
+  conferimento == 61453 & anno_reg == 2023 ~ 61435,
+  conferimento == 74663 & anno_reg == 2024 ~ 74633,
+  conferimento == 88429 & anno_reg == 2024 ~ 88249,
+  conferimento == 164532 & anno_reg == 2023 ~ 164632,
+  conferimento == 169329 & anno_reg == 2024 ~ 179329,
+  conferimento == 264957 & anno_reg == 2024 ~ 261957,
+  conferimento == 279623 & anno_reg == 2024 ~ 279263,
+  TRUE ~ conferimento),
+  specie = case_when(
+    conferimento == 74633 ~ "RED FOX",
+    conferimento == 148325 & anno_reg == 2023 ~ "PORCUPINE",
+    conferimento == 227483 & anno_reg == 2023 ~ "BADGER",
+    conferimento == 285481 & anno_reg == 2024 ~ "ROE DEER",
+    conferimento == 255856 & anno_reg == 2024 ~ "WOLF",
+    conferimento == 260514 & anno_reg == 2024 ~ "RED FOX",
+    TRUE ~ specie))
+
+#ho notato alcune righe duplicate in da4_sieri
+set.seed(123)  # Per rendere la scelta riproducibile (opzionale)
+da4_sieri_dedup <- da4_sieri %>%
+  as_tibble() %>%
+  group_by(conferimento, n_campione, anno_reg) %>%
+  slice_sample(n = 1) %>%
+  ungroup()
+
+da4_sieri_dedup <- da4_sieri_dedup %>%
+  mutate(specie = case_when(
+    conferimento == 74633 & anno_reg == 2024 ~ "RED FOX",
+    conferimento == 227483 & anno_reg == 2023 ~ "BADGER",
+    conferimento == 227426 & anno_reg == 2024 ~ "JACKAL",
+    conferimento == 241029 & anno_reg == 2023 ~ "RAT",
+    TRUE ~ specie  # lascia invariato per gli altri
+  ))
+
+
+  
+da4_sieri <- left_join(da4_sieri_dedup, sieri_clean, by = c("conferimento", "n_campione", "specie", "anno_reg"))
+
+# anti_join(sieri_clean, p1, by=c("conferimento", "n_campione", "specie", "anno_reg")) %>% view()
+# 
+# anti_join(da4_sieri, sieri_clean, by = c("conferimento", "n_campione", "specie", "anno_reg")) %>% view()
+# 
+# anti_join(sieri_clean, da4_sieri, by = c("conferimento", "n_campione", "specie", "anno_reg")) %>% view()
 
 # integrazione dati Pancov ------------------------------------------------
 
@@ -818,55 +1168,76 @@ dt_pancov <- dt_an %>%
   select(-(5:17)) %>% select(- somma) %>% dplyr::rename(anno_reg = anno) %>% select(- provenienza) %>% 
   separate(.,conf_orig,c("conferimento","n_campione"), sep = "/") %>% 
   mutate(n_campione = na.fill(n_campione, (1))) %>% 
-  mutate(conferimento = as.numeric(conferimento))
+  mutate(conferimento = as.numeric(conferimento),
+         specie = recode(specie,
+          "CAPRIOLO" = "ROE DEER",
+          "DAINO" = "FALLOW DEER",
+          "TASSO" = "BADGER",
+          "ISTRICE" = "PORCUPINE",
+          "LEPRE" = "HARE",
+          "RICCIO" = "HEDGEHOG",
+          "SCOIATTOLO" = "SQUIRREL",
+          "LUPO" = "WOLF",
+          "CERVO" = "DEER",
+          "FAINA" = "BEECH MARTEN",
+          "DELFINO" = "TURSIOPS",
+          "VOLPE" = "RED FOX",
+          "SILVILAGO" = "MARSH RABBIT",
+          "PUZZOLA" = "SKUNK",
+          "CONIGLIO" = "RABBIT",
+          "LONTRA" = "OTTER",
+          "SURICATO" = "MEERKAT",
+          "AGUTI DI AZARA" = "AZARA'S AGOUTI",
+          "RATTO" = "RAT",
+          "TOPO" = "MOUSE",
+          "GHIRO" = "DORMOUSE",
+          "GATTO SELVATICO" = "EUROPEAN WILDCAT",
+          "CANGURO" = "WALLABY",
+          "CINGHIALE" = "WILD BOAR",
+          "MARTORA" = "PINE MARTEN",
+          "SCIACALLO" = "JACKAL",
+          "FURETTO" = "FERRET",
+          "PIPISTRELLO" = "BAT",
+          "DONNOLA" = "WEASEL",
+          "PROCIONE" = "RACCOON",
+          "CINCILLA'" = "CHINCHILLA",
+          "TALPA" = "MOLE"),
+         specie = case_when(
+           conferimento == 74633 & anno_reg == 2024 ~ "RED FOX",
+           conferimento == 227483 & anno_reg == 2023 ~ "BADGER",
+           TRUE ~ specie))
 
 
 da_completo_2 <- da4_sieri %>% left_join(dt_pancov, by = c("conferimento", "n_campione", "specie", "anno_reg"))
+da_completo_3 <- da4_sieri %>% left_join(dt_pancov, by = c("conferimento", "n_campione", "specie", "anno_reg"))
 
-view(da_completo)
+anti_join(dt_pancov,da_completo_3, by= c("conferimento", "n_campione", "specie", "anno_reg")) %>% view()
 
-write.xlsx(da_completo, file = "./dati/dataset PRC completo.xlsx")
+
+view(da_completo_3)
+
+#problema: non ero riuscito a non inserire dei negativi falsi in s_elisa: li rimuovo forzatamente
+da_completo_3 <- da_completo_3 %>%
+  mutate(elisa = toupper(elisa),
+         s_elisa = toupper(s_elisa)) %>% 
+  mutate(s_elisa = case_when(
+    elisa == "NEG" ~ NA,
+    TRUE ~ s_elisa
+  ))
+
+da_completo_3 <- da_completo_3 %>% 
+  mutate(coord_y = case_when(
+    conferimento ==  262254 & anno_reg == 2024 ~ 12.36972222222,
+    conferimento ==  310680 & anno_reg == 2024 ~ 12.54972,
+    TRUE ~ coord_y
+  ))
+
+#write.xlsx(da_completo, file = "./dati/dataset PRC completo.xlsx")
+write.xlsx(da_completo_3, file = "./dati/dataset PRC completo 17072025.xlsx")
 # Mapping -----------------------------------------------------------------
 
-da_completo <- read.xlsx("./dati/dataset PRC completo.xlsx")
+da_completo <- read.xlsx("./dati/dataset PRC completo 17072025.xlsx")
 
-da_completo <- da_completo %>%
-  mutate(
-    specie = recode(specie,
-                    "CAPRIOLO" = "ROE DEER",
-                    "DAINO" = "FALLOW DEER",
-                    "TASSO" = "BADGER",
-                    "ISTRICE" = "PORCUPINE",
-                    "LEPRE" = "HARE",
-                    "RICCIO" = "HEDGEHOG",
-                    "SCOIATTOLO" = "SQUIRREL",
-                    "LUPO" = "WOLF",
-                    "CERVO" = "DEER",
-                    "FAINA" = "BEECH MARTEN",
-                    "DELFINO" = "TURSIOPS",
-                    "VOLPE" = "RED FOX",
-                    "SILVILAGO" = "MARSH RABBIT",
-                    "PUZZOLA" = "SKUNK",
-                    "CANGURO" = "WALLABY",
-                    "CONIGLIO" = "RABBIT",
-                    "LONTRA" = "OTTER",
-                    "SURICATO" = "MEERKAT",
-                    "AGUTI DI AZARA" = "AZARA'S AGOUTI",
-                    "RATTO" = "RAT",
-                    "TOPO" = "MOUSE",
-                    "GHIRO" = "DORMOUSE",
-                    "PROCIONE" = "RACCOON",
-                    "MARTORA" = "PINE MARTEN",
-                    "FURETTO" = "FERRET",
-                    "DONNOLA" = "WEASEL",
-                    "TALPA" = "MOLE",
-                    "SCIACALLO" = "JACKAL",
-                    "CINCILLA'" = "CHINCHILLA",
-                    "PIPISTRELLO" = "BAT",
-                    "TURSIOPE" = "TURSIOPS",
-                    "GATTO SELVATICO" = "EUROPEAN WILDCAT"
-    )
-  )
 
 
 #inizio col tentare di creare una mappa con tmap di tutti i campioni di cui ho la posizione
@@ -1284,59 +1655,31 @@ mappa_completa
 
 # Analisi numeriche sul dataset completo ----------------------------------
 
-da_completo <- read.xlsx("./dati/dataset PRC completo.xlsx")
+da_completo <- read.xlsx("./dati/dataset PRC completo 17072025.xlsx")
 
-da_completo <- da_completo %>%
-  mutate(
-    specie = recode(specie,
-                    "CAPRIOLO" = "ROE DEER",
-                    "DAINO" = "FALLOW DEER",
-                    "TASSO" = "BADGER",
-                    "ISTRICE" = "PORCUPINE",
-                    "LEPRE" = "HARE",
-                    "RICCIO" = "HEDGEHOG",
-                    "SCOIATTOLO" = "SQUIRREL",
-                    "LUPO" = "WOLF",
-                    "CERVO" = "DEER",
-                    "FAINA" = "BEECH MARTEN",
-                    "DELFINO" = "TURSIOPS",
-                    "VOLPE" = "RED FOX",
-                    "SILVILAGO" = "MARSH RABBIT",
-                    "PUZZOLA" = "SKUNK",
-                    "CANGURO" = "WALLABY",
-                    "CONIGLIO" = "RABBIT",
-                    "LONTRA" = "OTTER",
-                    "SURICATO" = "MEERKAT",
-                    "AGUTI DI AZARA" = "AZARA'S AGOUTI",
-                    "RATTO" = "RAT",
-                    "TOPO" = "MOUSE",
-                    "GHIRO" = "DORMOUSE",
-                    "PROCIONE" = "RACCOON",
-                    "MARTORA" = "PINE MARTEN",
-                    "FURETTO" = "FERRET",
-                    "DONNOLA" = "WEASEL",
-                    "TALPA" = "MOLE",
-                    "SCIACALLO" = "JACKAL",
-                    "CINCILLA'" = "CHINCHILLA",
-                    "PIPISTRELLO" = "BAT",
-                    "TURSIOPE" = "TURSIOPS",
-                    "GATTO SELVATICO" = "EUROPEAN WILDCAT"
-    )
-  )
+
+#quanti animali campionati per specie?
+
+da_completo %>% group_by(specie) %>% summarise(N_individui = n()) %>% arrange(desc(N_individui)) %>% janitor::adorn_totals() %>% view()
 
 #voglio arrivare a fare un summary di quanti animali positivi a pancov per specie
 
-da_completo %>% group_by(specie) %>% 
-  summarise(N_individui = n(), POS = sum(pos_pancov == "POS", na.rm = T), NEG= sum(pos_pancov == "NEG", na.rm = T)) %>% 
-  arrange(desc(N_individui)) %>% janitor::adorn_totals() #include i 12 animali di cui non fatta analisi pancov
+da_completo %>%  group_by(specie) %>% 
+  summarise(N_individui = n(), POS = sum(pos_pancov == "POS", na.rm = T), NEG= sum(pos_pancov == "NEG", na.rm = T), 
+            UNTESTED = sum(is.na(pos_pancov))) %>% 
+  arrange(desc(N_individui)) %>% janitor::adorn_totals() %>% view() 
 
 #summary positivi sierologia per specie
 
-da_completo %>% group_by(specie) %>% filter(! is.na(elisa)) %>% 
+da_completo %>% group_by(specie) %>%  
   summarise(
     Totale = n(),
-    elisa = sum(elisa == "POS", na.rm = T),
-    s_elisa = sum(s_elisa == "POS", na.rm = T),
+    elisa_pos = sum(elisa == "POS", na.rm = T),
+    elisa_neg = sum(elisa == "NEG", na.rm = T),
+    elisa_NT = sum(is.na(elisa)),
+    s_elisa_pos = sum(s_elisa == "POS", na.rm = T),
+    s_elisa_neg = sum(s_elisa == "NEG", na.rm = T),
     .groups = "drop") %>%
-  arrange(desc(elisa)) %>% janitor::adorn_totals() %>% view()
+  arrange(desc(elisa_pos)) %>% janitor::adorn_totals() %>% view() #mancano diversi animali rispetto ad ECV..., perché? Perché non presenti nel dataset
+
     
