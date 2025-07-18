@@ -222,7 +222,7 @@ write.xlsx(estratti, file = "./exports/dati estratti lavorati.xlsx")
 dati_aggiustati <- read_excel("dati/dati estratti lavorati corretti a mano.xlsx")
 view(dati_aggiustati)
 
-#devo correggere le coordinate y di 2 luoghi che le hanno indicate in maniera scorretta, finendo in mare
+#devo correggere le coordinate y di alcuni luoghi che le hanno indicate in maniera scorretta, finendo in mare o fuori confine
 
 dati_aggiustati <- dati_aggiustati %>% 
   mutate(coord_y_raw = replace(coord_y_raw, coord_y_raw %in% "Y 12°59'22''", "Y 11°59'22''"),
@@ -334,71 +334,71 @@ da <- converti_coordinate_decimali(dati_aggiustati)
 #questa prima funzione di geotag ha un problema di cache nel momento in cui non ha luoghi nuovi, ma sono tutti già nella cache.
 #l'ho aggiornata per superare il problema
 
-geotagga_luoghi_con_cache_v2 <- function(df, col_luogo = "luogo", col_lat = "coord_x", col_lon = "coord_y", cache_file = "./dati/cache_geocoding.csv") {
-  library(tmaptools)
-  library(dplyr)
-  
-  # Crea la cartella "dati" se non esiste
-  dir.create(dirname(cache_file), recursive = TRUE, showWarnings = FALSE)
-  
-  # Carica cache esistente o inizializza
-  if (file.exists(cache_file)) {
-    cache <- read.csv(cache_file, stringsAsFactors = FALSE)
-  } else {
-    cache <- data.frame(
-      luogo = character(),
-      lat = numeric(),
-      lon = numeric(),
-      stringsAsFactors = FALSE
-    )
-  }
-  
-  # Trova luoghi da geotaggare (non già con coordinate e non vuoti)
-  luoghi_da_geotaggare <- df %>%
-    filter(is.na(.data[[col_lat]]) & !is.na(.data[[col_luogo]]) & .data[[col_luogo]] != "") %>%
-    distinct(.data[[col_luogo]]) %>%
-    pull()
-  
-  luoghi_nuovi <- setdiff(luoghi_da_geotaggare, cache$luogo)
-  
-  if (length(luoghi_nuovi) > 0) {
-    # Geocodifica solo quelli non in cache
-    nuovi <- data.frame(luogo = luoghi_nuovi, lat = NA_real_, lon = NA_real_, stringsAsFactors = FALSE)
-    
-    for (i in seq_along(luoghi_nuovi)) {
-      luogo_corrente <- luoghi_nuovi[i]
-      res <- tryCatch(
-        geocode_OSM(luogo_corrente, as.data.frame = TRUE),
-        error = function(e) NULL
-      )
-      
-      if (!is.null(res)) {
-        nuovi$lat[i] <- res$lat
-        nuovi$lon[i] <- res$lon
-      }
-      
-      Sys.sleep(1)  # Rispetta i limiti di Nominatim
-      cat("Geocodificato:", i, "di", length(luoghi_nuovi), "-", luogo_corrente, "\n")
-    }
-    
-    # Unisce alla cache esistente e salva
-    cache <- bind_rows(cache, nuovi) %>%
-      distinct(luogo, .keep_all = TRUE)
-    
-    write.csv(cache, cache_file, row.names = FALSE)
-  }
-  
-  # Aggiunge le coordinate al dataframe originale
-  df <- df %>%
-    left_join(cache, by = setNames("luogo", col_luogo)) %>%
-    mutate(
-      !!col_lat := if_else(is.na(.data[[col_lat]]), lat, .data[[col_lat]]),
-      !!col_lon := if_else(is.na(.data[[col_lon]]), lon, .data[[col_lon]])
-    ) %>%
-    select(-lat, -lon)
-  
-  return(df)
-}
+# geotagga_luoghi_con_cache_v2 <- function(df, col_luogo = "luogo", col_lat = "coord_x", col_lon = "coord_y", cache_file = "./dati/cache_geocoding.csv") {
+#   library(tmaptools)
+#   library(dplyr)
+#   
+#   # Crea la cartella "dati" se non esiste
+#   dir.create(dirname(cache_file), recursive = TRUE, showWarnings = FALSE)
+#   
+#   # Carica cache esistente o inizializza
+#   if (file.exists(cache_file)) {
+#     cache <- read.csv(cache_file, stringsAsFactors = FALSE)
+#   } else {
+#     cache <- data.frame(
+#       luogo = character(),
+#       lat = numeric(),
+#       lon = numeric(),
+#       stringsAsFactors = FALSE
+#     )
+#   }
+#   
+#   # Trova luoghi da geotaggare (non già con coordinate e non vuoti)
+#   luoghi_da_geotaggare <- df %>%
+#     filter(is.na(.data[[col_lat]]) & !is.na(.data[[col_luogo]]) & .data[[col_luogo]] != "") %>%
+#     distinct(.data[[col_luogo]]) %>%
+#     pull()
+#   
+#   luoghi_nuovi <- setdiff(luoghi_da_geotaggare, cache$luogo)
+#   
+#   if (length(luoghi_nuovi) > 0) {
+#     # Geocodifica solo quelli non in cache
+#     nuovi <- data.frame(luogo = luoghi_nuovi, lat = NA_real_, lon = NA_real_, stringsAsFactors = FALSE)
+#     
+#     for (i in seq_along(luoghi_nuovi)) {
+#       luogo_corrente <- luoghi_nuovi[i]
+#       res <- tryCatch(
+#         geocode_OSM(luogo_corrente, as.data.frame = TRUE),
+#         error = function(e) NULL
+#       )
+#       
+#       if (!is.null(res)) {
+#         nuovi$lat[i] <- res$lat
+#         nuovi$lon[i] <- res$lon
+#       }
+#       
+#       Sys.sleep(1)  # Rispetta i limiti di Nominatim
+#       cat("Geocodificato:", i, "di", length(luoghi_nuovi), "-", luogo_corrente, "\n")
+#     }
+#     
+#     # Unisce alla cache esistente e salva
+#     cache <- bind_rows(cache, nuovi) %>%
+#       distinct(luogo, .keep_all = TRUE)
+#     
+#     write.csv(cache, cache_file, row.names = FALSE)
+#   }
+#   
+#   # Aggiunge le coordinate al dataframe originale
+#   df <- df %>%
+#     left_join(cache, by = setNames("luogo", col_luogo)) %>%
+#     mutate(
+#       !!col_lat := if_else(is.na(.data[[col_lat]]), lat, .data[[col_lat]]),
+#       !!col_lon := if_else(is.na(.data[[col_lon]]), lon, .data[[col_lon]])
+#     ) %>%
+#     select(-lat, -lon)
+#   
+#   return(df)
+# }
 
 
 
@@ -839,7 +839,8 @@ anti_join(sieri_clean, da4_sieri, by = c("conferimento", "n_campione", "specie",
 
 
 
-#visto che ci sono 450 campioni in più, devo integrarli nel dataset. aggiungo sotto una sezione per farlo
+#visto che ci sono 450 campioni in più, devo integrarli nel dataset. aggiungo sotto una sezione per farlo, partendo dall'elenco di tutti i selvatici
+#presenti nel piano monitoraggio fauna selvatica ER tra 2022 e 2024
 
 
 
@@ -1287,6 +1288,8 @@ map1_campionamenti <- tm_shape(province_er) +
   tm_dots(fill = "red", size = 0.1, fill_alpha = 0.6, title = "Campioni") +
   tm_layout(frame = F)
 
+map1_campionamenti
+
 tmap_save(map1_campionamenti, "./exports/Total sampling map.png", dpi = 600)
 
 #versione per tmap - view mode
@@ -1328,22 +1331,29 @@ palette_specie <- c(
   "PORCUPINE" = "#00ced1"
 )
 
-# map2_elisa_pos <- tm_shape(province_er) +
-#   tm_polygons(col = "gray60", fill_alpha = 0.2) +
-#   tm_shape(campioni_pos_sieri_sf) +
-#   tm_squares(
-#     fill = "specie",
-#     size = 0.35,
-#     popup.vars = c(
-#       "Latitudine" = "lat",
-#       "Longitudine" = "lon",
-#       "Conferimento" = "conferimento",
-#       "Anno" = "anno_reg",
-#       "Specie" = "specie"
-#     ),
-#     fill.scale  = tm_scale_categorical(values = palette_specie)
-#   )+
-#   tm_title("Positivi ELISA RBD")
+map2_elisa_pos <- tm_shape(province_er) +
+  tm_polygons(col = "gray60", fill_alpha = 0.2) +
+  tm_shape(campioni_pos_sieri_sf) +
+  tm_squares(
+    fill = "specie",
+    size = 0.35,
+    popup.vars = c(
+      "Latitudine" = "lat",
+      "Longitudine" = "lon",
+      "Conferimento" = "conferimento",
+      "Anno" = "anno_reg",
+      "Specie" = "specie"
+    ),
+    fill.scale  = tm_scale_categorical(values = palette_specie),
+    fill.legend = tm_legend(title = "Species"),
+  )+
+  tm_layout(frame = F, legend.position = )
+
+map2_elisa_pos
+
+tmap_save(map2_elisa_pos, "./exports/Sera positivity map.png", dpi = 600)
+
+
 
 campioni_pos_pancov_sf <- da_completo %>% filter(pos_pancov == "POS") %>% filter(provincia != "Pavia" | is.na(provincia)) %>% 
   filter(!is.na(coord_x) & !is.na(coord_y)) %>%
@@ -1354,22 +1364,27 @@ campioni_pos_pancov_sf <- da_completo %>% filter(pos_pancov == "POS") %>% filter
 
 
 
-# map3_pos_pancov <- tm_shape(province_er) +
-#   tm_polygons(col = "gray60", fill_alpha = 0.2) +
-#   tm_shape(campioni_pos_pancov_sf) +
-#   tm_dots(
-#     fill = "specie",
-#     size = 0.35,
-#     popup.vars = c(
-#       "Latitudine" = "lat",
-#       "Longitudine" = "lon",
-#       "Conferimento" = "conferimento",
-#       "Anno" = "anno_reg",
-#       "Specie" = "specie"
-#     ),
-#     fill.scale  = tm_scale_categorical(values = palette_specie)
-#   )+
-#   tm_title("Positivi Pancov")
+map3_pos_pancov <- tm_shape(province_er) +
+  tm_polygons(col = "gray60", fill_alpha = 0.2) +
+  tm_shape(campioni_pos_pancov_sf) +
+  tm_dots(
+    fill = "specie",
+    size = 0.35,
+    popup.vars = c(
+      "Latitudine" = "lat",
+      "Longitudine" = "lon",
+      "Conferimento" = "conferimento",
+      "Anno" = "anno_reg",
+      "Specie" = "specie"
+    ),
+    fill.scale  = tm_scale_categorical(values = palette_specie),
+    fill.legend = tm_legend(title = "Species")
+  )+
+  tm_layout(frame = F)
+
+map3_pos_pancov
+
+tmap_save(map3_pos_pancov, "./exports/Pancov positive map.png", dpi = 600)
 
 map4_pos_totali <- tm_shape(province_er) +
   tm_polygons(col = "gray60", fill_alpha = 0.2) +
@@ -1403,6 +1418,8 @@ map4_pos_totali <- tm_shape(province_er) +
     fill.legend = tm_legend("PanCoV positive")
   )+
   tm_layout(frame = F)
+
+map4_pos_totali
 
 tmap_save(map4_pos_totali, "./exports/Total positive map.png", dpi = 600)
 
