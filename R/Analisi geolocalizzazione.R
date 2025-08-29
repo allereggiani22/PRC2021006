@@ -1400,7 +1400,7 @@ map4_pos_totali <- tm_shape(province_er) +
       "Specie" = "specie"
     ),
     fill.scale  = tm_scale_categorical(values = palette_specie),
-    fill.legend = tm_legend("ELISA positive")
+    fill.legend = tm_legend("sELISA positive")
   )+
   
   tm_shape(campioni_pos_pancov_sf) +
@@ -1447,6 +1447,7 @@ palette_specie <- c(
   "ISTRICE" = "#00ced1"
 )
 
+#tmap_mode("view")
 
 
 tm_shape(province_er)+
@@ -1673,22 +1674,47 @@ mappa_completa
 # Analisi numeriche sul dataset completo ----------------------------------
 
 da_completo <- read.xlsx("./dati/dataset PRC completo 17072025.xlsx")
-
+da_completo <- da_completo %>% mutate(specie = recode(specie, "TURSIOPE"="TURSIOPS"))
 
 #quanti animali campionati per specie?
 
-da_completo %>% group_by(specie) %>% summarise(N_individui = n()) %>% arrange(desc(N_individui)) %>% janitor::adorn_totals() %>% view()
+total_sampling <- da_completo %>% group_by(specie) %>% summarise(N_individui = n()) %>% arrange(desc(N_individui)) %>% janitor::adorn_totals()
 
 #voglio arrivare a fare un summary di quanti animali positivi a pancov per specie
 
-da_completo %>%  group_by(specie) %>% 
+pancov_positivity <- da_completo %>%  group_by(specie) %>% 
   summarise(N_individui = n(), POS = sum(pos_pancov == "POS", na.rm = T), NEG= sum(pos_pancov == "NEG", na.rm = T), 
-            UNTESTED = sum(is.na(pos_pancov))) %>% 
-  arrange(desc(N_individui)) %>% janitor::adorn_totals() %>% view() 
+            UNTESTED = sum(is.na(pos_pancov)),
+            TESTED = N_individui-UNTESTED) %>% 
+  arrange(desc(N_individui)) %>% janitor::adorn_totals() 
+
+#grafico pancov
+
+fig1 <- pancov_positivity %>% filter(N_individui > 10) %>% select(-c("N_individui", "TESTED", "UNTESTED")) %>% filter(specie != "Total") %>% filter(NEG > 1)  %>% pivot_longer(!specie, names_to = "PanCoV", values_to = "totali") %>%
+  ggplot()+
+  aes(x=fct_reorder(specie, totali, .desc = F), y=totali, fill=PanCoV)+
+  geom_col(position = "stack")+
+  geom_text(aes(specie, label = ifelse(totali>0, totali,"")), position = position_stack(vjust = 1), size=5, hjust = 0, vjust = 0)+#, position = position_dodge(width = 1))+
+  labs(x="Species", y="Totals")+
+  scale_y_continuous(expand = expansion(mult = c(0.01, 0.05)))+
+  #scale_x_discrete(expand = expansion(add = c(1.1, 0.5)))+
+  theme_minimal()+
+  theme(axis.text = element_text(size=12 ,face = "bold"),
+        axis.title = element_text(face= "bold"),
+        axis.title.x = element_text(vjust = 0),
+        legend.text = element_text(size=12 ,face = "bold"),
+        axis.text.x.bottom = element_text(vjust= 0),
+        legend.title = element_text(size=12, face = "bold"),
+        plot.background = element_rect(colour = "white", fill = "white"))+
+  coord_flip()
+
+fig1
+
+ggsave("./exports/01082025_pancov_positivity.png", plot = fig1, dpi = 600, width = 11, units = "in")
 
 #summary positivi sierologia per specie
 
-da_completo %>% group_by(specie) %>%  
+sera_positivity <- da_completo %>% group_by(specie) %>%  
   summarise(
     Totale = n(),
     elisa_pos = sum(elisa == "POS", na.rm = T),
@@ -1696,7 +1722,144 @@ da_completo %>% group_by(specie) %>%
     elisa_NT = sum(is.na(elisa)),
     s_elisa_pos = sum(s_elisa == "POS", na.rm = T),
     s_elisa_neg = sum(s_elisa == "NEG", na.rm = T),
+    elisa_T = Totale-elisa_NT,
     .groups = "drop") %>%
-  arrange(desc(elisa_pos)) %>% janitor::adorn_totals() %>% view() #mancano diversi animali rispetto ad ECV..., perché? Perché non presenti nel dataset
+  arrange(desc(elisa_pos)) #%>% janitor::adorn_totals()
 
-    
+total_sampling %>% write.xlsx(., file="./exports/Total sampling.xlsx")
+
+sera_positivity %>% write.xlsx(., file= "./exports/01082025 sera positivity.xlsx") 
+
+#controllo incrociato positività s_elisa e pancov
+
+da_completo %>% select(conferimento, n_campione, specie, anno_reg, elisa, s_elisa, pos_pancov) %>%
+  filter(elisa == "POS") %>% filter(!is.na(pos_pancov)) %>% view()
+
+# IC 95% positività sierologica
+
+library(binom)
+
+view(sera_positivity)
+
+sera_for_CI <- sera_positivity %>% select(-Totale, -elisa_pos, -elisa_neg, -elisa_NT, -s_elisa_neg)
+
+ic_sera <- binom.confint(
+  x = sera_for_CI$s_elisa_pos,
+  n = sera_for_CI$elisa_T,
+  methods = "exact" 
+)
+
+view(ic_sera)
+
+ic_sera_2 <- cbind(sera_for_CI, ic_sera[, c("mean", "lower", "upper")])  
+
+view(ic_sera_2)
+
+ic_sera_2 <- ic_sera_2 %>% 
+  mutate(across(c(mean, lower, upper), ~ round(.x * 100, 2))) %>% filter(elisa_T > 20) %>% dplyr::rename(., "species" = "specie") %>%
+  mutate(label = sprintf("%5.1f%% [%5.1f – %5.1f]", mean, lower, upper))
+
+# Forest plot
+
+# Calcola un piccolo margine per le etichette
+x_max <- max(ic_sera_2$upper, na.rm = TRUE)  # massimo intervallo
+label_offset <- 5                              # spazio extra a destra
+
+forest_plot <- ggplot(ic_sera_2, aes(y = species, x = mean)) +
+  geom_point(color = "steelblue", size = 3) +
+  geom_errorbarh(aes(xmin = lower, xmax = upper), height = 0.2, color = "black") +
+  geom_text(aes(x = x_max + label_offset, label = label),
+            hjust = 0.4, size = 4, family = "mono") +  # etichette fuori a destra
+  scale_x_continuous(limits = c(0, x_max + 2*label_offset), expand = c(0,0)) +
+  labs(x = "Positivity percentage with 95% CI", y = "") +
+  coord_cartesian(clip = "off") +  #per non tagliare le etichette quando esporto
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.y = element_text(size = 12),
+    panel.grid.major.y = element_blank(),  # tolgo linee orizzontali
+    panel.grid.minor = element_blank(),
+    plot.background = element_rect(fill = "white")
+  )
+
+ggplot2::ggsave("./exports/Forest_Plot.png", forest_plot, dpi = 600, limitsize = F, width = 8.5)
+
+#MINIMUM DETECTABLE PRESENCE
+
+ssize <- pancov_positivity %>% select(specie,TESTED) %>% filter(TESTED > 0) %>% dplyr::rename("species" = "specie", "sample_size" = "TESTED")
+
+# Funzione per calcolare la Maximum Possible Prevalence
+calc_mpp <- function(n, conf.level = 0.95) {
+  # n può essere un vettore
+  1 - (1 - conf.level)^(1/n)
+}
+
+mpp <- ssize %>% mutate(mpp_95 = round(calc_mpp(sample_size, conf.level = 0.95) * 100, 2))
+
+write.xlsx(mpp, "./exports/mpp95_covid.xlsx")
+
+# Editing per analisi filogenetica ----------------------------------------
+
+# Carica il pacchetto necessario
+library(ape)
+
+# 1. Leggi il file FASTA (o PHYLIP, se già convertito)
+file_input <- "./dati/Allineamento per articolo.fas"  # cambia estensione in .phy se già PHYLIP
+seqs <- read.dna(file_input, format = "fasta")  # usa format = "sequential" se già PHYLIP
+
+# 2. Crea nomi brevi: sequence1, sequence2, ...
+original_names <- rownames(seqs)
+short_names <- paste0("sequence", seq_along(original_names))
+rownames(seqs) <- short_names
+
+# 3. Esporta il file PHYLIP con nomi brevi
+write.dna(seqs, file = "./exports/allineamento_renamed.phy", format = "sequential", nbcol = -1, colsep = "")
+
+# 4. Esporta la tabella di conversione
+conversion_table <- data.frame(
+  short_name = short_names,
+  original_name = original_names
+)
+write.csv(conversion_table, file = "./exports/conversion_table.csv", row.names = FALSE)
+
+cat("✅ Conversione completata! File salvati:\n- allineamento_renamed.phy\n- conversion_table.csv\n")
+
+
+#una volta ottenuto il newick, vorrei riconvertire i nomi
+
+library(ape)
+
+# 1. Localizza il file Newick originale
+newick_path <- "./dati/allineamento_renamed_phy_phyml_tree.txt"  # <-- cambia se necessario
+
+
+# 2. Leggi la mappa nomi
+id_map <- read_csv("./exports/conversion_table.csv") # deve avere colonne: short_name, original_name
+
+# 3. Pulisci i nomi originali: spazi e simboli non ammessi
+id_map <- id_map %>%
+  mutate(original_clean = original_name %>%
+           str_replace_all(" ", "_") %>%
+           str_replace_all(":", "_") %>%
+           str_replace_all("\\(", "") %>%
+           str_replace_all("\\)", "") %>%
+           str_replace_all(",", "_"))
+
+# 4. Leggi l'albero con ape
+tree <- read.tree(newick_path)  # il file con i nomi corti: sequence1, sequence2, ...
+
+# 5. Controllo
+length(tree$tip.label)  # Deve essere 184
+
+# 6. Crea un named vector per mappare
+name_map <- setNames(id_map$original_clean, id_map$short_name)
+
+# 7. Applichiamo la sostituzione
+tree$tip.label <- name_map[tree$tip.label]
+
+# 8. Controllo duplicati
+if (anyDuplicated(tree$tip.label) > 0) {
+  warning("Attenzione: ci sono duplicati nei nomi finali!")
+}
+
+# 9. Salva l'albero corretto
+write.tree(tree, file = "./exports/albero_pancov_phyml_btsp1000.nwk")
