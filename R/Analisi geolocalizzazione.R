@@ -1277,7 +1277,9 @@ campioni_sf <- campioni_sf %>%
 
 # Mappe statiche per pubblicazione ----------------------------------------
 
-
+volpi <- campioni_sf %>% filter(specie == "RED FOX")
+volpi_pos <- campioni_sf %>% filter(specie == "RED FOX", s_elisa == "POS")
+view(volpi)
 
 tmap_mode("plot")  # o "plot" se vuoi per stampa
 
@@ -1292,20 +1294,60 @@ map1_campionamenti
 
 tmap_save(map1_campionamenti, "./exports/Total sampling map.png", dpi = 600)
 
+
+
+#prova per capire periurbanità volpi
+
+map_volpi <- tm_shape(province_er) +
+  tm_polygons(col = "gray60", fill_alpha = 0.2) +
+  tm_shape(volpi) +
+  tm_dots(fill = "red", size = 0.1, fill_alpha = 0.6, title = "Campioni") +
+  tm_layout(frame = F)
+
+map_volpi_pos <- tm_shape(province_er) +
+  tm_polygons(col = "gray60", fill_alpha = 0.2) +
+  tm_shape(volpi_pos) +
+  tm_dots(fill = "red", size = 0.1, fill_alpha = 0.6, title = "Campioni") +
+  tm_layout(frame = F)
+
 #versione per tmap - view mode
 
-# tmap_mode("view")
-# 
-# map1_campionamenti <- tm_shape(province_er) +
-#   tm_borders() +
-#   tm_shape(campioni_sf) +
-#   tm_dots(
-#     fill = "red",
-#     size = 0.08,
-#     popup.vars = c("Latitudine" = "lat", "Longitudine" = "lon", "ID" = c("conferimento","anno_reg", "specie" = "specie"))
-#   )+
-#   tm_title("Campionamenti totali")
+tmap_mode("view")
 
+map1_campionamenti <- tm_shape(province_er) +
+  tm_borders() +
+  tm_shape(campioni_sf) +
+  tm_dots(
+    fill = "red",
+    size = 0.08,
+    popup.vars = c("Latitudine" = "lat", "Longitudine" = "lon", "ID" = c("conferimento","anno_reg", "specie" = "specie"))
+  )+
+  tm_title("Campionamenti totali")
+
+
+map_volpi_2 <- tm_shape(province_er) +
+  tm_borders() +
+  tm_shape(volpi) +
+  tm_dots(
+    fill = "red",
+    size = 0.08,
+    popup.vars = c("Latitudine" = "lat", "Longitudine" = "lon", "ID" = c("conferimento","anno_reg", "specie" = "specie"))
+  )+
+  tm_title("Volpi")
+
+
+map_volpi_pos_2 <- tm_shape(province_er) +
+  tm_borders() +
+  tm_shape(volpi_pos) +
+  tm_dots(
+    fill = "red",
+    size = 0.2,
+    popup.vars = c("Latitudine" = "lat", "Longitudine" = "lon", "ID" = c("conferimento","anno_reg", "specie" = "specie"))
+  )+
+  tm_title("Volpi positive")
+
+map_volpi_2
+map_volpi_pos_2
 
 #già questa va molto bene per i campioni totali. Prossimo step: dovrei integrare i dati di positività in sierologia ed in PCR Pancov
 #per poter mappare i positivi. Inoltre, sui positivi, sarebbe bello discriminare graficamente le specie
@@ -1678,7 +1720,13 @@ da_completo <- da_completo %>% mutate(specie = recode(specie, "TURSIOPE"="TURSIO
 
 #quanti animali campionati per specie?
 
-total_sampling <- da_completo %>% group_by(specie) %>% summarise(N_individui = n()) %>% arrange(desc(N_individui)) %>% janitor::adorn_totals()
+total_sampling <- da_completo %>% group_by(specie) %>%
+  summarise(N_individui = n(),
+            N_elisa = sum(!is.na(elisa)),
+            N_pancov = sum(!is.na(pos_pancov))) %>%
+  arrange(desc(N_individui)) %>% janitor::adorn_totals()
+
+write.xlsx(total_sampling, "./exports/27.10.2025 Total sampling.xlsx")
 
 #voglio arrivare a fare un summary di quanti animali positivi a pancov per specie
 
