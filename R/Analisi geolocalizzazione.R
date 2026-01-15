@@ -1324,6 +1324,57 @@ map1_campionamenti <- tm_shape(province_er) +
   )+
   tm_title("Campionamenti totali")
 
+#provo ad integrare dati geografiti o topografici con pacchetti online come OpenStreetMap, CartoDB o Stadia.Stamen.Terrain, ma con tmap4
+#sembrano esserci dei bug. Provo a fare tutto in locale
+
+# #install.packages("osmdata")
+# library(osmdata)
+# 
+# # bounding box della regione
+# bb <- st_bbox(province_er)
+# 
+# # osmdata vuole un numeric vector in ordine xmin, ymin, xmax, ymax
+# bb_vec <- c(bb["xmin"], bb["ymin"], bb["xmax"], bb["ymax"])
+# 
+# osm_roads <- opq(bbox = bb_vec) |>
+#   add_osm_feature(
+#     key = "highway",
+#     value = c(
+#       "motorway", "trunk",
+#       "primary", "secondary"
+#     )
+#   )
+# 
+# # bbox solo intorno ai campioni
+# bb <- st_bbox(campioni_sf)
+# bb_vec <- c(bb["xmin"], bb["ymin"], bb["xmax"], bb["ymax"])
+# 
+# osm_roads <- opq(bbox = bb_vec) |>
+#   add_osm_feature(
+#     key = "highway",
+#     value = c("motorway", "trunk", "primary", "secondary")
+#   )
+# 
+# roads_sf <- osmdata_sf(osm_roads)
+# 
+# osm_raw <- osmdata_xml(osm_roads, quiet = F) 
+# 
+# 
+# roads_sf <- osmdata_sf(osm_roads)
+# strade <- roads_sf$osm_lines
+# 
+# osm_places <- opq(bbox = bb_vec) |>
+#   add_osm_feature(
+#     key = "place",
+#     value = c("city", "town")
+#   )
+# 
+# places_sf <- osmdata_sf(osm_places)
+# centri <- places_sf$osm_points
+# 
+# 
+# 
+
 
 map_volpi_2 <- tm_shape(province_er) +
   tm_borders() +
@@ -1570,9 +1621,21 @@ campioni_sf_sieri_enriched <- st_join(campioni_pos_sieri_sf, campioni_count_sier
 
 
 # Crea la mappa
-mappa_completa <- leaflet() %>%
-  # Aggiungi base map
-  addProviderTiles("CartoDB.Positron") %>%
+mappa_completa <- 
+  # leaflet() %>%
+  # # Aggiungi base map
+  # #addProviderTiles("CartoDB.Positron") %>%
+  # #addProviderTiles("Stamen.Terrain", group = "Terrain") %>%
+  # addProviderTiles("OpenStreetMap", group = "OSM") %>%
+  
+  leaflet() %>%
+  addProviderTiles("Esri.WorldTopoMap", group = "Topo") %>%
+  addProviderTiles("CartoDB.Positron", group = "Carto") %>%
+  addLayersControl(
+    baseGroups = c("Topo", "Carto"),
+    overlayGroups = c("Campionamenti", "Positivi ELISA", "Positivi Pancov"),
+    options = layersControlOptions(collapsed = FALSE)
+  ) %>% 
   
   # Aggiungi confini provinciali
   addPolygons(data = province_er,
@@ -1712,6 +1775,284 @@ mappa_completa
   #                  "Lon:", lon)
   # )
 
+
+# Mappa leaflet per pubblicazione -----------------------------------------
+
+library(leaflet)
+library(sf)
+library(dplyr)
+
+palette_specie <- c(
+  "ROE DEER" = "#1f77b4",
+  "RED FOX" = "#ff7f0e",
+  "WOLF" = "#2ca02c",
+  "HEDGEHOG" = "#800080",
+  "HARE" = "#db7093",
+  "RAT" = "#ee82ee",
+  "BADGER" = "red3",
+  "PORCUPINE" = "#00ced1"
+)
+
+
+# Palette specie (già definita)
+pal <- colorFactor(
+  palette = palette_specie,
+  domain = names(palette_specie)
+)
+
+mappa_finale_campionamenti <- leaflet(options = leafletOptions(zoomControl = FALSE)) %>%
+  
+  # Basemap
+  addProviderTiles("Esri.WorldTopoMap") %>%
+  #addProviderTiles("Esri.WorldGrayCanvas", group = "Base map") %>% 
+  #addProviderTiles("Esri.WorldTerrain", group = "ESRI Terrain") %>% 
+ 
+  # # Basemap chiara
+  # addTiles(
+  #   urlTemplate = "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+  #   group = "Base",
+  #   options = tileOptions(opacity = 1)
+  # ) %>%
+  # 
+  # # Hillshade SOPRA
+  # addTiles(
+  #   urlTemplate = "https://services.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}",
+  #   group = "Rilievi",
+  #   options = tileOptions(opacity = 0.25)
+  # ) %>% 
+  # 
+  # # Etichette (città, strade, fiumi)
+  # addTiles(
+  #   "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}",
+  #   group = "Etichette"
+  # ) %>% 
+
+  
+  # Confini provinciali
+  addPolygons(
+    data = province_er,
+    color = "black",
+    weight = 1.5,
+    opacity = 0.8,
+    fillOpacity = 0
+  ) %>%
+  
+  # Campionamenti totali → cerchi rossi
+  addCircleMarkers(
+    data = campioni_sf,
+    radius = 2.5,
+    color = "red",
+    stroke = FALSE,
+    fillOpacity = 1
+  ) %>% 
+  
+  
+  addControl(
+    html = htmltools::HTML(
+      "<div style='
+      background:white;
+      padding:6px 10px;
+      border:1px solid #444;
+      font-size:16px;
+      line-height:1.2;
+    '>
+      <div style='width:160px; height:6px; background:black; margin-bottom:4px;'></div>
+      20 km
+    </div>"
+    ),
+    position = "bottomleft"
+  ) %>% 
+
+  
+  addControl(
+    html = htmltools::HTML(
+      "<div style='
+      width:40px;
+      text-align:center;
+      font-family:Arial;
+      font-size:22px;
+      font-weight:bold;
+    '>
+      N
+      <svg width='30' height='40' viewBox='0 0 30 40'>
+        <polygon points='15,0 30,40 15,30 0,40' fill='black'/>
+      </svg>
+    </div>"
+    ),
+    position = "topright"
+  )
+
+
+mappa_finale_campionamenti
+
+
+# Determina i valori delle 3 classi legenda dimensione
+valori_legenda <- c(1, 4, 7, 15) 
+radius_legenda <- (5 + 0.5 * valori_legenda)*2 #fattore scala per visibilità
+
+
+mappa_finale_positivi <- 
+  
+  leaflet(options = leafletOptions(zoomControl = FALSE)) %>%
+  
+  # Basemap
+  addProviderTiles("Esri.WorldTopoMap") %>%
+  
+  # # Basemap chiara
+  # addTiles(
+  #   urlTemplate = "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+  #   group = "Base",
+  #   options = tileOptions(opacity = 1)
+  # ) %>%
+  # 
+  # # Hillshade SOPRA
+  # addTiles(
+  #   urlTemplate = "https://services.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}",
+  #   group = "Rilievi",
+  #   options = tileOptions(opacity = 0.25)
+  # ) %>% 
+  # 
+  # # Etichette (città, strade, fiumi)
+  # addTiles(
+  #   "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}",
+  #   group = "Etichette"
+  # ) %>% 
+  
+  
+  
+  # Confini provinciali
+  addPolygons(
+    data = province_er,
+    color = "black",
+    weight = 1.5,
+    opacity = 0.8,
+    fillOpacity = 0
+  ) %>%
+  
+# Positivi ELISA → cerchi normali
+addCircleMarkers(
+  data = campioni_sf_sieri_enriched,
+  radius = ~5 + 0.5 * n_punti,
+  color = ~pal(specie),
+  stroke = TRUE,
+  weight = 1.2,
+  fillOpacity = 0.85
+) %>%
+
+# Positivi Pancov → cerchi con bordo spesso
+addCircleMarkers(
+  data = campioni_sf_pancov_enriched,
+  radius = ~5 + 0.5 * n_punti,
+  fillColor = ~pal(specie),
+  fillOpacity = 0.85,
+  color = "black",   # bordo nero
+  weight = 2,        # bordo più sottile ma leggibile
+  stroke = TRUE
+) %>%
+
+# Legenda specie
+# addLegend(
+#   "bottomright",
+#   pal = pal,
+#   values = names(palette_specie),
+#   title = "Species",
+#   opacity = 1
+# )
+
+  addLegend(
+    position = "bottomright",
+    pal = pal,
+    values = specie_livelli,
+    title = htmltools::HTML(
+      "<div style='font-size:26px; font-weight:bold; margin-bottom:8px;'>Species</div>"),
+    opacity = 1,
+    labFormat = labelFormat(
+      transform = function(x) {
+        paste0("<span style='font-size:22px;'>", x, "</span>")
+      }
+    )
+  )%>% 
+  
+  #scale bar
+  addControl(
+    html = htmltools::HTML(
+      "<div style='
+      background:white;
+      padding:6px 10px;
+      border:1px solid #444;
+      font-size:16px;
+      line-height:1.2;
+    '>
+      <div style='width:160px; height:6px; background:black; margin-bottom:4px;'></div>
+      20 km
+    </div>"
+    ),
+    position = "bottomleft"
+  ) %>% 
+  
+  #freccia che indica il nord
+  addControl(
+    html = htmltools::HTML(
+      "<div style='
+      width:40px;
+      text-align:center;
+      font-family:Arial;
+      font-size:22px;
+      font-weight:bold;
+    '>
+      N
+      <svg width='30' height='40' viewBox='0 0 30 40'>
+        <polygon points='15,0 30,40 15,30 0,40' fill='black'/>
+      </svg>
+    </div>"
+    ),
+    position = "topright"
+  ) %>% 
+  
+ # Legenda dimensione punti
+addControl(
+  html = htmltools::HTML(
+    paste0(
+      "<div style='background:white; padding:6px 10px; border:1px solid #444; font-size:16px; line-height:1.4;'>",
+      "<div style='font-weight:bold; margin-bottom:6px;'>Overlapping<br>sample number</div>",
+      
+      # Ciclo sulle 4 classi
+      paste0(
+        "<div style='display:flex; align-items:center; margin-bottom:2px;'>",
+        "<div style='width:", radius_legenda, "px; height:", radius_legenda, 
+        "px; background:black; border-radius:50%; margin-right:6px;'></div>",
+        "<span>", c("1–2", "4", "7-8", "13-15"), "</span>",
+        "</div>", collapse = ""
+      ),
+      
+      "</div>"
+    )
+  ),
+  position = "bottomleft"  # vicino alla legenda colori
+)
+
+
+
+mappa_finale_positivi
+
+# per fare export statico
+install.packages("webshot")
+webshot::install_phantomjs()  
+
+library(mapview)
+
+mapshot(
+  mappa_finale_campionamenti,
+  file = "./exports/15012026_mappa_finale_600dpi.png",
+  vwidth = 3000,
+  vheight = 1500
+)
+
+mapshot(mappa_finale_positivi,
+        file = "./exports/15012026_mappa_finale_pos_600dpi.png",
+        vwidth = 3000,
+        vheight = 1500
+)
 
 # Analisi numeriche sul dataset completo ----------------------------------
 

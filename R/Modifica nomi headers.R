@@ -184,3 +184,5 @@ stopifnot(all(!is.na(df$anno)))
 
 # 12. Salvataggio dei metadata su file
 write.csv(df, "exports/metadata_sequenze.csv", row.names = FALSE)
+write.xlsx(df, "exports/metadata_sequenze.xlsx")
+
